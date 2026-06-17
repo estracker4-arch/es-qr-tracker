@@ -1,0 +1,63 @@
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+  reset_token TEXT,
+  reset_expires TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS products (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS qr_codes (
+  id SERIAL PRIMARY KEY,
+  qr_no TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS status_options (
+  id SERIAL PRIMARY KEY,
+  value TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id),
+  product TEXT NOT NULL,
+  qr_no TEXT NOT NULL,
+  status_field TEXT NOT NULL,
+  session_number INTEGER NOT NULL DEFAULT 1,
+  task_status TEXT NOT NULL DEFAULT 'working' CHECK (task_status IN ('working', 'work in progress', 'stopped', 'uploaded')),
+  stuck_reason TEXT,
+  was_auto_paused BOOLEAN NOT NULL DEFAULT FALSE,
+  size_category TEXT CHECK (size_category IN ('BN', 'Medium', 'Small')),
+  bn_reason TEXT,
+  started_at TIMESTAMPTZ,
+  stopped_at TIMESTAMPTZ,
+  total_active_seconds INTEGER NOT NULL DEFAULT 0,
+  total_paused_seconds INTEGER NOT NULL DEFAULT 0,
+  active_time TEXT GENERATED ALWAYS AS (
+    lpad(floor(total_active_seconds / 3600)::text, 2, '0') || ':' ||
+    lpad(floor((total_active_seconds % 3600) / 60)::text, 2, '0') || ':' ||
+    lpad((total_active_seconds % 60)::text, 2, '0')
+  ) STORED,
+  paused_time TEXT GENERATED ALWAYS AS (
+    lpad(floor(total_paused_seconds / 3600)::text, 2, '0') || ':' ||
+    lpad(floor((total_paused_seconds % 3600) / 60)::text, 2, '0') || ':' ||
+    lpad((total_paused_seconds % 60)::text, 2, '0')
+  ) STORED,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS task_events (
+  id SERIAL PRIMARY KEY,
+  task_id INTEGER REFERENCES tasks(id),
+  event_type TEXT NOT NULL CHECK (event_type IN ('start', 'pause', 'resume', 'stuck_reason', 'stop', 'complete', 'size_selected')),
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
