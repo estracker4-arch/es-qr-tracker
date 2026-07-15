@@ -1,8 +1,9 @@
 const router = require('express').Router();
 const pool = require('../db');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireUser } = require('../middleware/auth');
 
 router.use(authenticate);
+router.use(requireUser);
 
 async function secondsSinceLastResume(client, taskId) {
   const { rows } = await client.query(
@@ -146,7 +147,7 @@ router.patch('/:id/resume', async (req, res) => {
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `SELECT id FROM tasks WHERE id = $1 AND user_id = $2 AND task_status = 'work in progress'`,
+      `SELECT id FROM tasks WHERE id = $1 AND user_id = $2 AND task_status IN ('work in progress', 'stuck')`,
       [req.params.id, req.user.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Paused task not found' });
@@ -185,7 +186,7 @@ router.patch('/:id/resume', async (req, res) => {
   }
 });
 
-// PATCH /api/tasks/:id/stuck-reason — logs reason, resumes task
+// PATCH /api/tasks/:id/stuck-reason — logs reason, pauses task awaiting resume
 router.patch('/:id/stuck-reason', async (req, res) => {
   const { reason } = req.body;
   if (!reason?.trim()) return res.status(400).json({ error: 'Reason required' });
@@ -199,18 +200,13 @@ router.patch('/:id/stuck-reason', async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'Stopped task not found' });
 
-    const pausedElapsed = await secondsSinceLastPause(client, req.params.id);
     await client.query(
-      `UPDATE tasks SET stuck_reason = $1, task_status = 'working', total_paused_seconds = total_paused_seconds + $2, updated_at = NOW() WHERE id = $3`,
-      [reason.trim(), pausedElapsed, req.params.id]
+      `UPDATE tasks SET stuck_reason = $1, task_status = 'stuck', updated_at = NOW() WHERE id = $2`,
+      [reason.trim(), req.params.id]
     );
     await client.query(
       `INSERT INTO task_events (task_id, event_type, note) VALUES ($1, 'stuck_reason', $2)`,
       [req.params.id, reason.trim()]
-    );
-    await client.query(
-      `INSERT INTO task_events (task_id, event_type) VALUES ($1, 'resume')`,
-      [req.params.id]
     );
 
     const { rows: updated } = await client.query(
@@ -267,6 +263,40 @@ router.patch('/:id/stop', async (req, res) => {
   }
 });
 
+// PATCH /api/tasks/:id/unstop — undo an accidental stop, returns task to working
+router.patch('/:id/unstop', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT id FROM tasks WHERE id = $1 AND user_id = $2 AND task_status = 'stopped'`,
+      [req.params.id, req.user.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Stopped task not found' });
+
+    await client.query(
+      `UPDATE tasks SET task_status = 'working', stopped_at = NULL, updated_at = NOW() WHERE id = $1`,
+      [req.params.id]
+    );
+    await client.query(
+      `INSERT INTO task_events (task_id, event_type, note) VALUES ($1, 'resume', 'Resumed after accidental stop')`,
+      [req.params.id]
+    );
+
+    const { rows: updated } = await client.query(
+      `${TASK_WITH_RESUME} WHERE t.id = $1`, [req.params.id]
+    );
+    await client.query('COMMIT');
+    res.json(updated[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
 // PATCH /api/tasks/:id/complete
 router.patch('/:id/complete', async (req, res) => {
   const client = await pool.connect();
@@ -279,7 +309,11 @@ router.patch('/:id/complete', async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Stopped task not found' });
 
     await client.query(
-      `UPDATE tasks SET task_status = 'uploaded', updated_at = NOW() WHERE id = $1`,
+      `UPDATE tasks SET
+         task_status = 'uploaded',
+         size_category = CASE WHEN total_active_seconds > 18000 THEN 'BN' ELSE size_category END,
+         updated_at = NOW()
+       WHERE id = $1`,
       [req.params.id]
     );
     await client.query(
@@ -301,47 +335,20 @@ router.patch('/:id/complete', async (req, res) => {
   }
 });
 
-// PATCH /api/tasks/:id/size
-router.patch('/:id/size', async (req, res) => {
-  const { size_category, reason } = req.body;
-  if (!['BN', 'Medium', 'Small'].includes(size_category)) {
-    return res.status(400).json({ error: 'size_category must be BN, Medium, or Small' });
-  }
-  if (size_category === 'BN' && !reason?.trim()) {
-    return res.status(400).json({ error: 'Reason is required for BN' });
-  }
+// DELETE /api/tasks/:id
+router.delete('/:id', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `SELECT id, size_category FROM tasks WHERE id = $1 AND user_id = $2 AND task_status = 'uploaded'`,
+      'SELECT id FROM tasks WHERE id = $1 AND user_id = $2',
       [req.params.id, req.user.id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Completed task not found' });
-    if (rows[0].size_category) return res.status(400).json({ error: 'Size already set — task is locked' });
-
-    if (size_category === 'BN') {
-      await client.query(
-        `UPDATE tasks SET size_category = $1, bn_reason = $2, updated_at = NOW() WHERE id = $3`,
-        [size_category, reason.trim(), req.params.id]
-      );
-    } else {
-      await client.query(
-        `UPDATE tasks SET size_category = $1, updated_at = NOW() WHERE id = $2`,
-        [size_category, req.params.id]
-      );
-    }
-    const eventNote = size_category === 'BN' ? `BN: ${reason.trim()}` : size_category;
-    await client.query(
-      `INSERT INTO task_events (task_id, event_type, note) VALUES ($1, 'size_selected', $2)`,
-      [req.params.id, eventNote]
-    );
-
-    const { rows: updated } = await client.query(
-      `${TASK_WITH_RESUME} WHERE t.id = $1`, [req.params.id]
-    );
+    if (!rows.length) return res.status(404).json({ error: 'Task not found' });
+    await client.query('DELETE FROM task_events WHERE task_id = $1', [req.params.id]);
+    await client.query('DELETE FROM tasks WHERE id = $1', [req.params.id]);
     await client.query('COMMIT');
-    res.json(updated[0]);
+    res.json({ message: 'Deleted' });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error(err);

@@ -46,7 +46,7 @@ router.post('/login', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, can_do_tasks: user.can_do_tasks } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -127,6 +127,18 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-router.get('/me', authenticate, (req, res) => res.json(req.user));
+router.get('/me', authenticate, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, name, email, role, can_do_tasks FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 module.exports = router;

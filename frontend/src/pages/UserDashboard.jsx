@@ -74,9 +74,15 @@ export default function UserDashboard() {
         case 'pause':    result = await api.pauseTask(selectedId);          break;
         case 'resume':   result = await api.resumeTask(selectedId);         break;
         case 'stop':     result = await api.stopTask(selectedId);           break;
+        case 'unstop':   result = await api.unstopTask(selectedId);         break;
         case 'complete': result = await api.completeTask(selectedId);       break;
-        case 'size':     result = await api.setSize(selectedId, payload.size, payload.reason); break;
         case 'stuck':    result = await api.setStuckReason(selectedId, payload); break;
+        case 'delete':
+          await api.deleteTask(selectedId);
+          setSelectedId(null);
+          await fetchTasks();
+          setActionLoading(false);
+          return;
       }
       if (action === 'resume' && result?.autoPaused) {
         setAutoPauseMsg('Previous task paused automatically.');
@@ -108,7 +114,12 @@ export default function UserDashboard() {
       <main style={{ flex: 1, padding: 24, overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <h1>Welcome, {user.name}</h1>
-          <button onClick={handleLogout}>Logout</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {user.role === 'reviewer' && (
+              <button onClick={() => nav('/reviewer')}>Switch to Reviewer</button>
+            )}
+            <button onClick={handleLogout}>Logout</button>
+          </div>
         </div>
 
         {autoPauseMsg && (
