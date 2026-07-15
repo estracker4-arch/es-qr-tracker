@@ -16,6 +16,9 @@ const STATUS_BG = {
   'stuck':            { bg: '#fff5f5', border: '#fc8181', badge: '#c53030' },
 };
 
+const REVIEW_OUTCOME_LABEL = { closed_out: 'Closed Out', stuck: 'Stuck', ier: 'IER' };
+const REVIEW_OUTCOME_COLOR = { closed_out: '#276749', stuck: '#c53030', ier: '#d69e2e' };
+
 export default function Sidebar({ tasks, selectedId, onSelect, onNewTask, getLiveSeconds, formatDuration }) {
   return (
     <aside style={{
@@ -89,8 +92,8 @@ export default function Sidebar({ tasks, selectedId, onSelect, onNewTask, getLiv
               )}
 
               {task.reviewed_at && (
-                <div style={{ marginTop: 4, fontSize: 11, color: '#276749', fontWeight: 500 }}>
-                  ✓ reviewed
+                <div style={{ marginTop: 4, fontSize: 11, color: REVIEW_OUTCOME_COLOR[task.review_outcome] || '#276749', fontWeight: 500 }}>
+                  ✓ {REVIEW_OUTCOME_LABEL[task.review_outcome] || 'reviewed'}
                 </div>
               )}
             </div>

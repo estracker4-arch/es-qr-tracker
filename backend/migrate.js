@@ -35,6 +35,10 @@ async function migrate() {
     await client.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS review_duration_seconds INTEGER`);
     await client.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS review_paused_seconds INTEGER`);
 
+    // Review outcome chosen on save: closed_out | stuck | ier (+ reason for stuck/ier).
+    await client.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS review_outcome TEXT`);
+    await client.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS review_outcome_reason TEXT`);
+
     // Allow the 'review' event type.
     await client.query(`ALTER TABLE task_events DROP CONSTRAINT IF EXISTS task_events_event_type_check`);
     await client.query(

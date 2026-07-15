@@ -17,18 +17,23 @@ function getLiveSeconds(task) {
   return base + Math.max(0, elapsed);
 }
 
+const OUTCOME_LABEL = { closed_out: 'Closed Out', stuck: 'Stuck', ier: 'IER' };
+
 function reviewStatus(t) {
-  if (t.reviewed_at) return 'Reviewed';
+  if (t.reviewed_at) return OUTCOME_LABEL[t.review_outcome] || 'Reviewed';
   if (t.review_started_at) return 'In Review';
   if (t.review_duration_seconds > 0) return 'Paused';
   return 'Pending';
 }
 
 const REVIEW_STATUS_COLOR = {
-  'Reviewed':  '#276749',
-  'In Review': '#d69e2e',
-  'Paused':    '#3182ce',
-  'Pending':   '#888',
+  'Closed Out': '#276749',
+  'Stuck':      '#c53030',
+  'IER':        '#d69e2e',
+  'Reviewed':   '#276749',
+  'In Review':  '#d69e2e',
+  'Paused':     '#3182ce',
+  'Pending':    '#888',
 };
 
 function fmtDT(iso) {
@@ -54,6 +59,7 @@ export default function ReviewerDashboard() {
   const [error,   setError]   = useState('');
   const [saving,  setSaving]  = useState(false);
   const [starting, setStarting] = useState(false);
+  const [outcomeStep, setOutcomeStep] = useState(false); // status prompt after Save
   const [, tick]  = useState(0);
   const nav  = useNavigate();
   const me   = JSON.parse(localStorage.getItem('user') || '{}');
@@ -94,7 +100,10 @@ export default function ReviewerDashboard() {
       review_reason: task.review_reason || '',
       review_rework_reason: task.review_rework_reason || '',
       size_category: task.size_category || '',
+      review_outcome: task.review_outcome || '',
+      review_outcome_reason: task.review_outcome_reason || '',
     });
+    setOutcomeStep(false);
     setError('');
   }
 
@@ -133,7 +142,8 @@ export default function ReviewerDashboard() {
     try {
       const updated = await api.reviewer.resetReview(active.id);
       setActive(updated);
-      setForm({ review_hms: '', review_reason: '', review_rework_reason: '' });
+      setForm({ review_hms: '', review_reason: '', review_rework_reason: '', size_category: '', review_outcome: '', review_outcome_reason: '' });
+      setOutcomeStep(false);
       fetchTasks(filters);
     } catch (err) {
       setError(err.message);
@@ -142,7 +152,8 @@ export default function ReviewerDashboard() {
     }
   }
 
-  async function saveReview() {
+  // Step 1: validate the form, then ask for the review status.
+  function saveReview() {
     setError('');
     if (!/^\d{1,3}:[0-5]?\d:[0-5]?\d$/.test(form.review_hms.trim())) {
       setError('Time must be in HH:MM:SS format.');
@@ -153,15 +164,32 @@ export default function ReviewerDashboard() {
       setError('BN Reason is required.');
       return;
     }
-    if (!window.confirm('Save this review and stop the timer? This finalizes the review.')) return;
+    setForm(f => ({ ...f, review_outcome: '', review_outcome_reason: '' }));
+    setOutcomeStep(true);
+  }
+
+  // Step 2: submit with the chosen status (+ reason for stuck / IER).
+  async function submitReview() {
+    setError('');
+    if (!form.review_outcome) {
+      setError('Choose a review status.');
+      return;
+    }
+    if ((form.review_outcome === 'stuck' || form.review_outcome === 'ier') && !form.review_outcome_reason.trim()) {
+      setError('A reason is required for this status.');
+      return;
+    }
     setSaving(true);
     try {
       await api.reviewer.review(active.id, {
-        review_seconds:       hmsToSecs(form.review_hms),
-        review_reason:        form.review_reason.trim(),
-        review_rework_reason: form.review_rework_reason.trim() || null,
-        size_category:        form.size_category || null,
+        review_seconds:        hmsToSecs(form.review_hms),
+        review_reason:         form.review_reason.trim(),
+        review_rework_reason:  form.review_rework_reason.trim() || null,
+        size_category:         form.size_category || null,
+        review_outcome:        form.review_outcome,
+        review_outcome_reason: form.review_outcome === 'closed_out' ? null : form.review_outcome_reason.trim(),
       });
+      setOutcomeStep(false);
       setActive(null);
       fetchTasks(filters);
     } catch (err) {
@@ -235,13 +263,13 @@ export default function ReviewerDashboard() {
             <thead>
               <tr>
                 {['User', 'Product', 'QR No', 'Session Type', 'Session No', 'State',
-                  'User Time', 'Quote Size', 'Actual Time', 'Reviewer Time', 'Review Status', 'Review Start', 'Review End',
+                  'User Time', 'Quote Size', 'Actual Time', 'Reviewer Time', 'Review Status', 'Status Reason', 'Review Start', 'Review End',
                   'Reviewer', ''].map((h, i) => <th key={i} style={TH}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {tasks.length === 0 && (
-                <tr><td colSpan={15} style={{ ...TD, color: '#888' }}>No tasks found.</td></tr>
+                <tr><td colSpan={16} style={{ ...TD, color: '#888' }}>No tasks found.</td></tr>
               )}
               {tasks.map(task => (
                 <tr key={task.id}>
@@ -271,6 +299,7 @@ export default function ReviewerDashboard() {
                           : '—'}
                   </td>
                   <td style={{ ...TD, color: REVIEW_STATUS_COLOR[reviewStatus(task)], fontWeight: 500 }}>{reviewStatus(task)}</td>
+                  <td style={{ ...TD, maxWidth: 200, whiteSpace: 'normal' }}>{task.review_outcome_reason || '—'}</td>
                   <td style={TD}>{fmtDT(task.review_first_started_at)}</td>
                   <td style={TD}>{fmtDT(task.review_ended_at)}</td>
                   <td style={TD}>{task.reviewer_name || '—'}</td>
@@ -426,6 +455,52 @@ export default function ReviewerDashboard() {
                   Reset Timer
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {active && outcomeStep && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', padding: 28, width: 400, boxShadow: '0 4px 24px rgba(0,0,0,0.2)' }}>
+            <h2 style={{ marginBottom: 6 }}>Review Status</h2>
+            <p style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>Select the outcome for QR {active.qr_no}.</p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+              {[['closed_out', 'Closed Out'], ['stuck', 'Stuck'], ['ier', 'IER']].map(([val, label]) => (
+                <label key={val} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px',
+                  border: '1px solid', borderColor: form.review_outcome === val ? '#3182ce' : '#ddd',
+                  borderRadius: 6, cursor: 'pointer', background: form.review_outcome === val ? '#ebf5ff' : '#fff',
+                }}>
+                  <input
+                    type="radio" name="review_outcome"
+                    checked={form.review_outcome === val}
+                    onChange={() => setForm(f => ({ ...f, review_outcome: val }))}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+
+            {(form.review_outcome === 'stuck' || form.review_outcome === 'ier') && (
+              <div className="form-group">
+                <label>{form.review_outcome === 'stuck' ? 'Stuck' : 'IER'} Reason (required)</label>
+                <textarea
+                  rows={3}
+                  value={form.review_outcome_reason}
+                  onChange={e => setForm(f => ({ ...f, review_outcome_reason: e.target.value }))}
+                />
+              </div>
+            )}
+
+            {error && <p style={{ color: '#b00', fontSize: 13, marginBottom: 10 }}>{error}</p>}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button onClick={submitReview} disabled={saving}>
+                {saving ? 'Saving…' : 'Confirm & Save'}
+              </button>
+              <button onClick={() => { setOutcomeStep(false); setError(''); }} disabled={saving}>Back</button>
             </div>
           </div>
         </div>

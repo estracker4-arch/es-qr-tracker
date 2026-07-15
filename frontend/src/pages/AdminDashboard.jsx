@@ -18,21 +18,29 @@ function getLiveSeconds(task) {
   return base + Math.max(0, elapsed);
 }
 
+const OUTCOME_LABEL = { closed_out: 'Closed Out', stuck: 'Stuck', ier: 'IER' };
+
 function reviewStatus(t) {
-  if (t.reviewed_at) return 'Reviewed';
+  if (t.reviewed_at) return OUTCOME_LABEL[t.review_outcome] || 'Reviewed';
   if (t.review_started_at) return 'In Review';
   if (t.review_duration_seconds > 0) return 'Paused';
   return 'Pending';
 }
 
-const REVIEW_STATUS_COLOR = { 'Reviewed': '#276749', 'In Review': '#d69e2e', 'Paused': '#3182ce', 'Pending': '#888' };
+const REVIEW_STATUS_COLOR = {
+  'Closed Out': '#276749', 'Stuck': '#c53030', 'IER': '#d69e2e',
+  'Reviewed': '#276749', 'In Review': '#d69e2e', 'Paused': '#3182ce', 'Pending': '#888',
+};
 
 function fmtDT(iso) {
   return iso ? new Date(iso).toLocaleString() : '—';
 }
 
 const TH = { padding: '8px 12px', border: '1px solid #ccc', background: '#f4f4f4', textAlign: 'left', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' };
+const TH_STICKY = { ...TH, position: 'sticky', top: 0, zIndex: 1 };
 const TD = { padding: '7px 12px', border: '1px solid #e8e8e8', fontSize: 13, verticalAlign: 'top' };
+// ~15 rows then vertical scroll for the rest.
+const SCROLL_BOX = { overflowX: 'auto', overflowY: 'auto', maxHeight: 520 };
 
 const STATE_COLORS = {
   'stopped':          '#f59e0b',
@@ -244,6 +252,17 @@ export default function AdminDashboard() {
     [allUsers],
   );
 
+  // Review-outcome distribution over the filtered reviewer task set (for the pie chart).
+  const outcomePieData = useMemo(() => {
+    const c = { closed_out: 0, stuck: 0, ier: 0 };
+    for (const t of reviewerTasks) if (t.review_outcome in c) c[t.review_outcome]++;
+    return [
+      { label: 'Closed Out', value: c.closed_out, color: '#10b981' },
+      { label: 'Stuck',      value: c.stuck,      color: '#ef4444' },
+      { label: 'IER',        value: c.ier,        color: '#f59e0b' },
+    ];
+  }, [reviewerTasks]);
+
   const reviewerTotals = useMemo(() => reviewerRows.reduce((a, r) => ({
     count: a.count + r.count,
     reviewerSecs: a.reviewerSecs + r.reviewerSecs,
@@ -303,6 +322,20 @@ export default function AdminDashboard() {
     try {
       await api.admin.setCanTasks(id, can_do_tasks);
       await fetchAllUsers();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setRoleBusy(null);
+    }
+  }
+
+  async function handleDeleteUser(id, name) {
+    if (!window.confirm(`Delete user "${name}"? This permanently removes the account and cannot be undone.`)) return;
+    setRoleBusy(id);
+    try {
+      await api.admin.deleteUser(id);
+      await fetchAllUsers();
+      api.admin.getUsers().then(setUsers).catch(console.error);
     } catch (err) {
       alert(err.message);
     } finally {
@@ -478,7 +511,7 @@ export default function AdminDashboard() {
   }
 
   function downloadExcel() {
-    const taskHeaders = ['User', 'Product', 'QR No', 'Session Type', 'Session No', 'State', 'Started', 'Stopped', 'User Time', 'Paused Time', 'Auto-paused', 'Quote Size', 'Actual Time', 'Reviewer Time', 'Review Status', 'Review Start', 'Review End', 'BN Reason', 'Rework Reason', 'Reviewer'];
+    const taskHeaders = ['User', 'Product', 'QR No', 'Session Type', 'Session No', 'State', 'Started', 'Stopped', 'User Time', 'Paused Time', 'Auto-paused', 'Quote Size', 'Actual Time', 'Reviewer Time', 'Review Status', 'Status Reason', 'Review Start', 'Review End', 'BN Reason', 'Rework Reason', 'Reviewer'];
     const taskRows = tasks.map(t => [
       t.user_name,
       t.product,
@@ -495,6 +528,7 @@ export default function AdminDashboard() {
       t.review_seconds != null ? formatDuration(t.review_seconds) : '',
       t.review_duration_seconds != null ? formatDuration(t.review_duration_seconds) : '',
       reviewStatus(t),
+      t.review_outcome_reason || '',
       t.review_first_started_at ? new Date(t.review_first_started_at).toLocaleString() : '',
       t.review_ended_at ? new Date(t.review_ended_at).toLocaleString() : '',
       t.review_reason || '',
@@ -516,7 +550,7 @@ export default function AdminDashboard() {
 
   function downloadReviewerExcel() {
     // Per-review detail rows from the separately-filtered reviewer task set.
-    const detailHeaders = ['Reviewer', 'User', 'Product', 'QR No', 'Session Type', 'State', 'Reviewer Time', 'Actual Time', 'Quote Size', 'Review Status', 'Review Start', 'Review End', 'BN Reason', 'Rework Reason', 'Reviewed At'];
+    const detailHeaders = ['Reviewer', 'User', 'Product', 'QR No', 'Session Type', 'State', 'Reviewer Time', 'Actual Time', 'Quote Size', 'Review Status', 'Status Reason', 'Review Start', 'Review End', 'BN Reason', 'Rework Reason', 'Reviewed At'];
     const detailRows = reviewerTasks.map(t => [
       t.reviewer_name,
       t.user_name,
@@ -528,6 +562,7 @@ export default function AdminDashboard() {
       t.review_seconds != null ? formatDuration(t.review_seconds) : '',
       t.size_category || '',
       reviewStatus(t),
+      t.review_outcome_reason || '',
       t.review_first_started_at ? new Date(t.review_first_started_at).toLocaleString() : '',
       t.review_ended_at ? new Date(t.review_ended_at).toLocaleString() : '',
       t.review_reason || '',
@@ -614,45 +649,56 @@ export default function AdminDashboard() {
                 <td style={TD}>{u.email}</td>
                 <td style={{ ...TD, textTransform: 'capitalize' }}>{u.role}</td>
                 <td style={TD}>
-                  {u.role === 'admin' ? (
-                    <span style={{ color: '#999', fontSize: 12 }}>—</span>
-                  ) : u.role === 'reviewer' ? (
-                    <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {u.role === 'admin' ? (
+                      <span style={{ color: '#999', fontSize: 12 }}>—</span>
+                    ) : u.role === 'reviewer' ? (
+                      <>
+                        <button
+                          onClick={() => handleSetRole(u.id, 'user')}
+                          disabled={roleBusy === u.id}
+                          style={{ fontSize: 12, padding: '2px 8px' }}
+                        >
+                          {roleBusy === u.id ? '…' : 'Make User'}
+                        </button>
+                        <button
+                          onClick={() => handleSetCanTasks(u.id, !u.can_do_tasks)}
+                          disabled={roleBusy === u.id}
+                          style={{ fontSize: 12, padding: '2px 8px' }}
+                          title="Allow this reviewer to also perform user tasks"
+                        >
+                          {roleBusy === u.id ? '…' : u.can_do_tasks ? '✓ Can do tasks' : 'Allow tasks'}
+                        </button>
+                        <select
+                          value={u.task_limit ?? ''}
+                          onChange={e => handleSetTaskLimit(u.id, e.target.value)}
+                          disabled={roleBusy === u.id}
+                          style={{ fontSize: 12, padding: '2px 4px' }}
+                          title="Max concurrent open reviews this reviewer can hold"
+                        >
+                          <option value="">No review limit</option>
+                          {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>Review limit {n}</option>)}
+                        </select>
+                      </>
+                    ) : (
                       <button
-                        onClick={() => handleSetRole(u.id, 'user')}
+                        onClick={() => handleSetRole(u.id, 'reviewer')}
                         disabled={roleBusy === u.id}
                         style={{ fontSize: 12, padding: '2px 8px' }}
                       >
-                        {roleBusy === u.id ? '…' : 'Make User'}
+                        {roleBusy === u.id ? '…' : 'Make Reviewer'}
                       </button>
+                    )}
+                    {u.role !== 'admin' && (
                       <button
-                        onClick={() => handleSetCanTasks(u.id, !u.can_do_tasks)}
+                        onClick={() => handleDeleteUser(u.id, u.name)}
                         disabled={roleBusy === u.id}
-                        style={{ fontSize: 12, padding: '2px 8px' }}
-                        title="Allow this reviewer to also perform user tasks"
+                        style={{ fontSize: 12, padding: '2px 8px', color: '#c53030', marginLeft: 4 }}
                       >
-                        {roleBusy === u.id ? '…' : u.can_do_tasks ? '✓ Can do tasks' : 'Allow tasks'}
+                        Delete
                       </button>
-                      <select
-                        value={u.task_limit ?? ''}
-                        onChange={e => handleSetTaskLimit(u.id, e.target.value)}
-                        disabled={roleBusy === u.id}
-                        style={{ fontSize: 12, padding: '2px 4px' }}
-                        title="Max concurrent open reviews this reviewer can hold"
-                      >
-                        <option value="">No review limit</option>
-                        {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>Review limit {n}</option>)}
-                      </select>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => handleSetRole(u.id, 'reviewer')}
-                      disabled={roleBusy === u.id}
-                      style={{ fontSize: 12, padding: '2px 8px' }}
-                    >
-                      {roleBusy === u.id ? '…' : 'Make Reviewer'}
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -800,22 +846,22 @@ export default function AdminDashboard() {
           <h2>Tasks ({tasks.length})</h2>
           <button onClick={downloadExcel} disabled={tasks.length === 0}>Download Excel</button>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={SCROLL_BOX}>
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
             <thead>
               <tr>
                 {[
                   'User', 'Product', 'QR No', 'Session Type', 'Session No', 'State',
                   'Started', 'Stopped', 'User Time', 'Paused Time', 'Auto-paused',
-                  'Quote Size', 'Actual Time', 'Reviewer Time', 'Review Status', 'Review Start', 'Review End',
+                  'Quote Size', 'Actual Time', 'Reviewer Time', 'Review Status', 'Status Reason', 'Review Start', 'Review End',
                   'BN Reason', 'Rework Reason', 'Reviewer', '',
-                ].map((h, i) => <th key={i} style={TH}>{h}</th>)}
+                ].map((h, i) => <th key={i} style={TH_STICKY}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {tasks.length === 0 && (
                 <tr>
-                  <td colSpan={21} style={{ ...TD, color: '#888' }}>No tasks found.</td>
+                  <td colSpan={22} style={{ ...TD, color: '#888' }}>No tasks found.</td>
                 </tr>
               )}
               {tasks.map(task => (
@@ -835,6 +881,7 @@ export default function AdminDashboard() {
                   <td style={TD}>{task.review_seconds != null ? formatDuration(task.review_seconds) : '—'}</td>
                   <td style={TD}>{task.review_duration_seconds != null ? formatDuration(task.review_duration_seconds) : '—'}</td>
                   <td style={{ ...TD, color: REVIEW_STATUS_COLOR[reviewStatus(task)], fontWeight: 500 }}>{reviewStatus(task)}</td>
+                  <td style={{ ...TD, maxWidth: 200, whiteSpace: 'normal' }}>{task.review_outcome_reason || '—'}</td>
                   <td style={TD}>{fmtDT(task.review_first_started_at)}</td>
                   <td style={TD}>{fmtDT(task.review_ended_at)}</td>
                   <td style={{ ...TD, maxWidth: 200, whiteSpace: 'normal' }}>{task.review_reason || '—'}</td>
@@ -892,6 +939,11 @@ export default function AdminDashboard() {
           </div>
         </form>
 
+        <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#555' }}>Review outcomes</h3>
+        <div style={{ marginBottom: 20 }}>
+          <StatePie data={outcomePieData} />
+        </div>
+
         <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#555' }}>Reviewer Summary</h3>
         <div style={{ overflowX: 'auto', marginBottom: 20 }}>
           <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
@@ -931,20 +983,20 @@ export default function AdminDashboard() {
           <h3 style={{ fontSize: 14, color: '#555' }}>Reviewed Tasks ({reviewerTasks.length})</h3>
           <button onClick={downloadReviewerExcel} disabled={reviewerTasks.length === 0}>Download Reviewer Data</button>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={SCROLL_BOX}>
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
             <thead>
               <tr>
                 {[
                   'Reviewer', 'User', 'Product', 'QR No', 'Session Type', 'State',
-                  'Reviewer Time', 'Actual Time', 'Quote Size', 'Review Status',
+                  'Reviewer Time', 'Actual Time', 'Quote Size', 'Review Status', 'Status Reason',
                   'Review Start', 'Review End', 'BN Reason', 'Rework Reason', 'Reviewed At',
-                ].map((h, i) => <th key={i} style={TH}>{h}</th>)}
+                ].map((h, i) => <th key={i} style={TH_STICKY}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {reviewerTasks.length === 0 && (
-                <tr><td colSpan={15} style={{ ...TD, color: '#888' }}>No reviewer tasks found.</td></tr>
+                <tr><td colSpan={16} style={{ ...TD, color: '#888' }}>No reviewer tasks found.</td></tr>
               )}
               {reviewerTasks.map(task => (
                 <tr key={task.id}>
@@ -958,6 +1010,7 @@ export default function AdminDashboard() {
                   <td style={TD}>{task.review_seconds != null ? formatDuration(task.review_seconds) : '—'}</td>
                   <td style={TD}>{task.size_category || '—'}</td>
                   <td style={{ ...TD, color: REVIEW_STATUS_COLOR[reviewStatus(task)], fontWeight: 500 }}>{reviewStatus(task)}</td>
+                  <td style={{ ...TD, maxWidth: 200, whiteSpace: 'normal' }}>{task.review_outcome_reason || '—'}</td>
                   <td style={TD}>{fmtDT(task.review_first_started_at)}</td>
                   <td style={TD}>{fmtDT(task.review_ended_at)}</td>
                   <td style={{ ...TD, maxWidth: 200, whiteSpace: 'normal' }}>{task.review_reason || '—'}</td>
