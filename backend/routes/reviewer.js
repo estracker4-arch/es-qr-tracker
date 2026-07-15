@@ -189,7 +189,7 @@ router.patch('/tasks/:id/review-reset', async (req, res) => {
 
 // PATCH /api/reviewer/tasks/:id/review — record actual time + reason; ends review timer
 router.patch('/tasks/:id/review', async (req, res) => {
-  const { review_seconds, review_reason, review_rework_reason, size_category } = req.body;
+  const { review_seconds, review_reason, review_rework_reason, size_category, review_outcome, review_outcome_reason } = req.body;
   const secs = parseInt(review_seconds, 10);
   if (!Number.isFinite(secs) || secs < 0) {
     return res.status(400).json({ error: 'Valid review time required' });
@@ -197,6 +197,13 @@ router.patch('/tasks/:id/review', async (req, res) => {
   if (size_category && size_category !== 'BN') {
     return res.status(400).json({ error: 'Invalid size' });
   }
+  if (!['closed_out', 'stuck', 'ier'].includes(review_outcome)) {
+    return res.status(400).json({ error: 'Review status is required' });
+  }
+  if ((review_outcome === 'stuck' || review_outcome === 'ier') && !review_outcome_reason?.trim()) {
+    return res.status(400).json({ error: 'A reason is required for Stuck / IER' });
+  }
+  const outcomeReason = review_outcome === 'closed_out' ? null : review_outcome_reason.trim();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -246,10 +253,12 @@ router.patch('/tasks/:id/review', async (req, res) => {
          review_started_at       = NULL,
          review_ended_at         = NOW(),
          review_duration_seconds = $7,
+         review_outcome          = $8,
+         review_outcome_reason   = $9,
          updated_at              = NOW()
-       WHERE id = $8
+       WHERE id = $10
        RETURNING *`,
-      [secs, review_reason?.trim() || null, review_rework_reason?.trim() || null, effectiveSize, req.user.id, req.user.name, durationSecs, req.params.id]
+      [secs, review_reason?.trim() || null, review_rework_reason?.trim() || null, effectiveSize, req.user.id, req.user.name, durationSecs, review_outcome, outcomeReason, req.params.id]
     );
     await client.query(
       `INSERT INTO task_events (task_id, event_type, note) VALUES ($1, 'review', $2)`,

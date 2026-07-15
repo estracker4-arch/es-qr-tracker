@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 
+const REVIEW_OUTCOME_LABEL = { closed_out: 'Closed Out', stuck: 'Stuck', ier: 'IER' };
+const REVIEW_OUTCOME_COLOR = { closed_out: '#276749', stuck: '#c53030', ier: '#d69e2e' };
+
 export default function TaskPanel({ task, liveSeconds, formatDuration, onAction, loading }) {
   const [showStuck, setShowStuck] = useState(false);
   const [stuckText, setStuckText] = useState('');
@@ -74,6 +77,19 @@ export default function TaskPanel({ task, liveSeconds, formatDuration, onAction,
       {task.reviewed_at && (
         <div style={{ marginBottom: 16, padding: '12px 14px', border: '1px solid #9ae6b4', background: '#f0fff4', fontSize: 13 }}>
           <div style={{ fontWeight: 600, marginBottom: 6, color: '#276749' }}>Reviewer Feedback</div>
+          {task.review_outcome && (
+            <div style={{ marginBottom: 3 }}>
+              <span style={{ color: '#555' }}>Status: </span>
+              <strong style={{ color: REVIEW_OUTCOME_COLOR[task.review_outcome] || '#276749' }}>
+                {REVIEW_OUTCOME_LABEL[task.review_outcome] || task.review_outcome}
+              </strong>
+            </div>
+          )}
+          {task.review_outcome_reason && (
+            <div style={{ marginBottom: 3 }}>
+              <span style={{ color: '#555' }}>{task.review_outcome === 'ier' ? 'IER' : 'Stuck'} Reason: </span>{task.review_outcome_reason}
+            </div>
+          )}
           {task.size_category && (
             <div style={{ marginBottom: 3 }}>
               <span style={{ color: '#555' }}>Quote Size: </span>

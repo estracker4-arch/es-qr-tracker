@@ -45,6 +45,7 @@ export const api = {
     setUserRole:   (id, role) => req('PATCH', `/admin/users/${id}/role`, { role }),
     setCanTasks:   (id, can_do_tasks) => req('PATCH', `/admin/users/${id}/can-tasks`, { can_do_tasks }),
     setTaskLimit:  (id, task_limit) => req('PATCH', `/admin/users/${id}/task-limit`, { task_limit }),
+    deleteUser:    (id) => req('DELETE', `/admin/users/${id}`),
     getSummary:    ()        => req('GET',    '/admin/summary'),
     editTask:      (id, data) => req('PATCH',  `/admin/tasks/${id}`, data),
     resetReview:   (id)       => req('PATCH',  `/admin/tasks/${id}/review-reset`),

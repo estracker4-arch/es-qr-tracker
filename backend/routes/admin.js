@@ -50,6 +50,31 @@ router.patch('/users/:id/role', async (req, res) => {
   }
 });
 
+// DELETE /api/admin/users/:id — remove a user account (blocked for admins, self, or users with data)
+router.delete('/users/:id', async (req, res) => {
+  if (String(req.params.id) === String(req.user.id)) {
+    return res.status(400).json({ error: 'You cannot delete your own account' });
+  }
+  try {
+    const { rows: target } = await pool.query('SELECT role FROM users WHERE id = $1', [req.params.id]);
+    if (!target.length) return res.status(404).json({ error: 'User not found' });
+    if (target[0].role === 'admin') {
+      return res.status(400).json({ error: 'Cannot delete an admin account' });
+    }
+    const { rows: cnt } = await pool.query(
+      'SELECT COUNT(*)::int AS c FROM tasks WHERE user_id = $1 OR reviewer_id = $1',
+      [req.params.id]
+    );
+    if (cnt[0].c > 0) {
+      return res.status(400).json({ error: `User has ${cnt[0].c} task(s)/review(s); reassign or delete those first` });
+    }
+    await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // PATCH /api/admin/users/:id/can-tasks — grant/revoke a reviewer's ability to perform user tasks
 router.patch('/users/:id/can-tasks', async (req, res) => {
   const { can_do_tasks } = req.body;

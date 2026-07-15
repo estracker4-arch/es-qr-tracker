@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   review_ended_at TIMESTAMPTZ,
   review_duration_seconds INTEGER,
   review_paused_seconds INTEGER,
+  review_outcome TEXT,
+  review_outcome_reason TEXT,
   active_time TEXT GENERATED ALWAYS AS (
     lpad(floor(total_active_seconds / 3600)::text, 2, '0') || ':' ||
     lpad(floor((total_active_seconds % 3600) / 60)::text, 2, '0') || ':' ||
