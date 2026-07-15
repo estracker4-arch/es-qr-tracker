@@ -28,6 +28,7 @@ async function seed() {
 
     const users = [
       { name: 'Admin User',   email: 'admin@nuevosol.com', password: 'admin123',  role: 'admin' },
+      { name: 'Rita Reviewer', email: 'reviewer@nuevosol.com', password: 'review123', role: 'reviewer' },
       { name: 'Alice Johnson', email: 'alice@nuevosol.com', password: 'alice123', role: 'user'  },
       { name: 'Bob Smith',     email: 'bob@nuevosol.com',   password: 'bob123',   role: 'user'  },
       { name: 'Carol Davis',   email: 'carol@nuevosol.com', password: 'carol123', role: 'user'  },

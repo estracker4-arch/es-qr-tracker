@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const pool = require('../db');
 
 function authenticate(req, res, next) {
   const auth = req.headers.authorization;
@@ -18,4 +19,25 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { authenticate, requireAdmin };
+function requireReviewer(req, res, next) {
+  if (req.user.role !== 'reviewer') return res.status(403).json({ error: 'Forbidden' });
+  next();
+}
+
+// May perform user tasks: plain users always; reviewers only if admin granted
+// the can_do_tasks flag. Checked live against the DB so grants/revokes take
+// effect without the reviewer re-logging in.
+async function requireUser(req, res, next) {
+  if (req.user.role === 'user') return next();
+  if (req.user.role === 'reviewer') {
+    try {
+      const { rows } = await pool.query('SELECT can_do_tasks FROM users WHERE id = $1', [req.user.id]);
+      if (rows.length && rows[0].can_do_tasks) return next();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  return res.status(403).json({ error: 'Forbidden' });
+}
+
+module.exports = { authenticate, requireAdmin, requireReviewer, requireUser };

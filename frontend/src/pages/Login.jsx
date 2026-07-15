@@ -32,7 +32,7 @@ export default function Login() {
       }
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
-      nav(user.role === 'admin' ? '/admin' : '/user', { replace: true });
+      nav(user.role === 'admin' ? '/admin' : user.role === 'reviewer' ? '/reviewer' : '/user', { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {

@@ -8,11 +8,12 @@ function fmt(iso) {
   return `${date}, ${time}`;
 }
 
-const BADGE = {
-  'working':          { background: '#111', color: '#fff' },
-  'work in progress': { background: '#555', color: '#fff' },
-  'stopped':          { background: '#ccc', color: '#111' },
-  'uploaded':         { background: '#fff', color: '#111', border: '1px solid #888' },
+const STATUS_BG = {
+  'working':          { bg: '#fff5f5', border: '#feb2b2', badge: '#e53e3e' },
+  'work in progress': { bg: '#fffff0', border: '#faf089', badge: '#d69e2e' },
+  'stopped':          { bg: '#ebf8ff', border: '#bee3f8', badge: '#3182ce' },
+  'uploaded':         { bg: '#f0fff4', border: '#9ae6b4', badge: '#38a169' },
+  'stuck':            { bg: '#fff5f5', border: '#fc8181', badge: '#c53030' },
 };
 
 export default function Sidebar({ tasks, selectedId, onSelect, onNewTask, getLiveSeconds, formatDuration }) {
@@ -36,15 +37,17 @@ export default function Sidebar({ tasks, selectedId, onSelect, onNewTask, getLiv
         )}
         {tasks.map(task => {
           const isSelected = task.id === selectedId;
+          const s = STATUS_BG[task.task_status] || STATUS_BG['working'];
           return (
             <div
               key={task.id}
               onClick={() => onSelect(task.id)}
               style={{
                 padding: '10px 12px',
-                borderBottom: '1px solid #eee',
+                borderBottom: `1px solid ${s.border}`,
+                borderLeft: `4px solid ${s.badge}`,
                 cursor: 'pointer',
-                background: isSelected ? '#f2f2f2' : '#fff',
+                background: isSelected ? s.border : s.bg,
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
@@ -56,7 +59,8 @@ export default function Sidebar({ tasks, selectedId, onSelect, onNewTask, getLiv
                   padding: '2px 6px',
                   whiteSpace: 'nowrap',
                   flexShrink: 0,
-                  ...BADGE[task.task_status],
+                  background: s.badge,
+                  color: '#fff',
                 }}>
                   {task.task_status}
                 </span>
@@ -81,6 +85,12 @@ export default function Sidebar({ tasks, selectedId, onSelect, onNewTask, getLiv
               {task.stuck_reason && (
                 <div style={{ marginTop: 4, fontSize: 11, color: '#666', fontStyle: 'italic' }}>
                   previously stuck
+                </div>
+              )}
+
+              {task.reviewed_at && (
+                <div style={{ marginTop: 4, fontSize: 11, color: '#276749', fontWeight: 500 }}>
+                  ✓ reviewed
                 </div>
               )}
             </div>
