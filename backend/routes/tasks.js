@@ -297,25 +297,77 @@ router.patch('/:id/unstop', async (req, res) => {
   }
 });
 
-// PATCH /api/tasks/:id/complete
+// GET /api/tasks/:id/qc-items — self-QC checklist for this task's product
+router.get('/:id/qc-items', async (req, res) => {
+  try {
+    const { rows: task } = await pool.query(
+      'SELECT product FROM tasks WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    );
+    if (!task.length) return res.status(404).json({ error: 'Task not found' });
+    const { rows } = await pool.query(
+      `SELECT qi.id, qi.label
+       FROM qc_items qi JOIN products p ON qi.product_id = p.id
+       WHERE p.name = $1
+       ORDER BY qi.sort_order, qi.id`,
+      [task[0].product]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PATCH /api/tasks/:id/complete — self-QC gate, then upload
 router.patch('/:id/complete', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `SELECT id FROM tasks WHERE id = $1 AND user_id = $2 AND task_status = 'stopped'`,
+      `SELECT id, product, total_active_seconds FROM tasks WHERE id = $1 AND user_id = $2 AND task_status = 'stopped'`,
       [req.params.id, req.user.id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Stopped task not found' });
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Stopped task not found' });
+    }
+    const task = rows[0];
+
+    // Required self-QC items for this product.
+    const { rows: items } = await client.query(
+      `SELECT qi.id, qi.label
+       FROM qc_items qi JOIN products p ON qi.product_id = p.id
+       WHERE p.name = $1`,
+      [task.product]
+    );
+
+    const checked = Array.isArray(req.body.checked_items) ? req.body.checked_items.map(Number) : [];
+
+    let selfQc = parseInt(req.body.self_qc_seconds, 10);
+    if (!Number.isFinite(selfQc) || selfQc < 0) selfQc = 0;
+    // Full checklist snapshot: every item with its checked/unchecked state.
+    const qcSnapshot = items.map(it => ({ label: it.label, checked: checked.includes(it.id) }));
+    const checkedCount = qcSnapshot.filter(x => x.checked).length;
+    const totalWithQc = (task.total_active_seconds || 0) + selfQc;
 
     await client.query(
       `UPDATE tasks SET
          task_status = 'uploaded',
+         self_qc_seconds = $2,
+         self_qc_items = $3::jsonb,
+         total_with_qc_seconds = $4,
          size_category = CASE WHEN total_active_seconds > 18000 THEN 'BN' ELSE size_category END,
          updated_at = NOW()
        WHERE id = $1`,
-      [req.params.id]
+      [req.params.id, selfQc, JSON.stringify(qcSnapshot), totalWithQc]
     );
+    if (items.length) {
+      await client.query(
+        `INSERT INTO task_events (task_id, event_type, note) VALUES ($1, 'self_qc', $2)`,
+        [req.params.id, `${checkedCount}/${items.length} checked, ${selfQc}s`]
+      );
+    }
     await client.query(
       `INSERT INTO task_events (task_id, event_type) VALUES ($1, 'complete')`,
       [req.params.id]

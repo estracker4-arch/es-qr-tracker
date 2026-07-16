@@ -39,11 +39,26 @@ async function migrate() {
     await client.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS review_outcome TEXT`);
     await client.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS review_outcome_reason TEXT`);
 
-    // Allow the 'review' event type.
+    // Self-QC: per-product checklist the user ticks off before a task uploads.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS qc_items (
+        id SERIAL PRIMARY KEY,
+        product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        label TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    // Time spent on the self-QC step, the checked items, and user time + self-QC time.
+    await client.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS self_qc_seconds INTEGER`);
+    await client.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS self_qc_items JSONB`);
+    await client.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS total_with_qc_seconds INTEGER`);
+
+    // Allow the 'review' and 'self_qc' event types.
     await client.query(`ALTER TABLE task_events DROP CONSTRAINT IF EXISTS task_events_event_type_check`);
     await client.query(
       `ALTER TABLE task_events ADD CONSTRAINT task_events_event_type_check
-       CHECK (event_type IN ('start', 'pause', 'resume', 'stuck_reason', 'stop', 'complete', 'size_selected', 'review'))`
+       CHECK (event_type IN ('start', 'pause', 'resume', 'stuck_reason', 'stop', 'complete', 'size_selected', 'review', 'self_qc'))`
     );
   } finally {
     client.release();

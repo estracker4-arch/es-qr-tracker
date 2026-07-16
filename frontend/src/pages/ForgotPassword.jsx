@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import Ring from '../components/Ring';
+import Wordmark from '../components/Wordmark';
 
 export default function ForgotPassword() {
   const [email, setEmail]     = useState('');
@@ -24,36 +26,53 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div style={{ maxWidth: 360, margin: '80px auto', padding: '0 20px' }}>
-      <h1 style={{ marginBottom: 6 }}>ES QR Tracker</h1>
-      <p style={{ color: '#555', marginBottom: 28, fontSize: 13 }}>Nuevosol Energy</p>
-      <h2 style={{ marginBottom: 20, fontSize: 18 }}>Reset Password</h2>
-
-      {message ? (
-        <div style={{ padding: '12px 14px', border: '1px solid #bbb', background: '#f5f5f5', fontSize: 13, marginBottom: 16 }}>
-          {message}
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-              autoFocus
-            />
+    <div className="login-split">
+      <div className="login-dark">
+        <Ring rays size={96} color="var(--sol-500)" style={{ position: 'relative' }} />
+        <div style={{ textAlign: 'center', position: 'relative' }}>
+          <Wordmark size={26} />
+          <div style={{ marginTop: 10, color: 'var(--alloy-100)', fontSize: 15, fontWeight: 500 }}>
+            ES QR Tracker
           </div>
-          {error && <p style={{ color: '#b00', fontSize: 13, marginBottom: 12 }}>{error}</p>}
-          <button type="submit" disabled={loading} style={{ width: '100%', padding: '8px 14px' }}>
-            {loading ? 'Sending…' : 'Send Reset Link'}
-          </button>
-        </form>
-      )}
+          <div className="eyebrow" style={{ marginTop: 4, color: 'var(--alloy-400)' }}>
+            Nuevosol Energy
+          </div>
+        </div>
+      </div>
 
-      <div style={{ marginTop: 16, textAlign: 'center' }}>
-        <Link to="/login" style={{ fontSize: 13, color: '#555' }}>Back to Sign In</Link>
+      <div className="login-light">
+        <div style={{ width: '100%', maxWidth: 360 }}>
+          <h2 style={{ marginBottom: 20 }}>Reset password</h2>
+
+          {message ? (
+            <div className="recess" style={{ padding: '12px 14px', fontSize: 13, marginBottom: 16, color: 'var(--ink-400)' }}>
+              {message}
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label>Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+              {error && <p style={{ color: 'var(--signal-stop)', fontSize: 13, marginBottom: 12 }}>{error}</p>}
+              <button type="submit" disabled={loading} className="btn-primary"
+                style={{ width: '100%', padding: '9px 14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                {loading && <Ring spinning size={14} color="#fff" />}
+                {loading ? 'Sending' : 'Send Reset Link'}
+              </button>
+            </form>
+          )}
+
+          <div style={{ marginTop: 16, textAlign: 'center' }}>
+            <Link to="/login" style={{ fontSize: 13, color: 'var(--ink-400)' }}>Back to Sign In</Link>
+          </div>
+        </div>
       </div>
     </div>
   );

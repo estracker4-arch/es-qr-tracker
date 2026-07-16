@@ -1,68 +1,656 @@
+/* ============================================================
+   Nuevosol — Terminator design system
+   Two surfaces: graphite (state instruments) / mist (data entry).
+   Orange is identity, not decoration: fills only on the primary
+   action, the solid half of the ring, and selection tint.
+   ============================================================ */
+
+:root {
+  /* accent */
+  --sol-500: #F85A28;
+  --sol-400: #FF7A3D;
+  --sol-600: #C63F17;
+  --sol-tint: rgba(248, 90, 40, 0.10);
+
+  /* graphite (canvas half) */
+  --graphite-900: #0C0F13;
+  --graphite-800: #12161C;
+  --graphite-700: #1A2028;
+  --alloy-600: #2B333E;
+  --alloy-400: #6B7684;
+  --alloy-100: #D8DEE6;
+
+  /* mist (instrument half) */
+  --mist-000: #FFFFFF;
+  --mist-050: #F5F6F8;
+  --mist-200: #E3E6EB;
+  --ink-400: #5D6672;
+  --ink-900: #131820;
+
+  /* status — never orange */
+  --signal-ok:   #1E9E6A;
+  --signal-warn: #C88A08;
+  --signal-stop: #C6362E;
+
+  /* type */
+  --font-display: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Consolas', monospace;
+
+  /* motion */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* the chamfered terminals of the wordmark, systemised */
+  --chamfer: polygon(2px 0, 100% 0, 100% calc(100% - 2px), calc(100% - 2px) 100%, 0 100%, 0 2px);
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #111;
-  background: #fff;
+html, body {
+  height: 100%;
 }
 
-h1 { font-size: 20px; font-weight: 600; }
-h2 { font-size: 16px; font-weight: 600; }
-h3 { font-size: 14px; font-weight: 600; }
+body {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-900);
+  background: var(--mist-000);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1 { font-family: var(--font-display); font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-family: var(--font-display); font-size: 18px; font-weight: 700; letter-spacing: -0.005em; }
+h3 { font-family: var(--font-body); font-size: 15px; font-weight: 700; }
+
+a {
+  color: var(--ink-900);
+  text-decoration: underline;
+  text-decoration-color: var(--mist-200);
+  text-underline-offset: 2px;
+  transition: text-decoration-color 200ms var(--ease);
+}
+a:hover { text-decoration-color: var(--sol-500); }
+
+/* ---------- controls (mist surface defaults) ---------- */
 
 button {
   font-family: inherit;
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   padding: 6px 14px;
-  border: 1px solid #aaa;
-  background: #fff;
-  color: #111;
+  border: 1px solid var(--mist-200);
+  background: var(--mist-000);
+  color: var(--ink-900);
   line-height: 1.4;
+  clip-path: var(--chamfer);
+  transition: background 200ms var(--ease), border-color 200ms var(--ease),
+              color 200ms var(--ease), transform 120ms var(--ease);
 }
+button:hover:not(:disabled) { background: var(--mist-050); border-color: var(--alloy-400); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--sol-500); }
 
-button:hover:not(:disabled) {
-  background: #f0f0f0;
+/* the one orange fill per screen */
+.btn-primary {
+  background: var(--sol-500);
+  border-color: var(--sol-500);
+  color: #fff;
+  font-weight: 500;
 }
+.btn-primary:hover:not(:disabled) { background: var(--sol-400); border-color: var(--sol-400); }
+.btn-primary:active:not(:disabled) { background: var(--sol-600); border-color: var(--sol-600); }
 
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+/* controls that sit on graphite */
+.btn-dark {
+  background: var(--graphite-700);
+  border-color: var(--alloy-600);
+  color: var(--alloy-100);
 }
+.btn-dark:hover:not(:disabled) { background: var(--alloy-600); border-color: var(--alloy-400); }
+
+/* destructive — status red as stroke, not fill */
+.btn-danger {
+  background: transparent;
+  border-color: var(--signal-stop);
+  color: var(--signal-stop);
+}
+.btn-danger:hover:not(:disabled) { background: rgba(198, 54, 46, 0.06); border-color: var(--signal-stop); }
 
 input, select, textarea {
   font-family: inherit;
   font-size: 13px;
   padding: 6px 8px;
-  border: 1px solid #aaa;
-  background: #fff;
-  color: #111;
+  border: 1px solid var(--mist-200);
+  background: var(--mist-000);
+  color: var(--ink-900);
   width: 100%;
+  clip-path: var(--chamfer);
+  transition: border-color 200ms var(--ease), box-shadow 200ms var(--ease);
 }
-
+input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) {
+  border-color: var(--alloy-400);
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--sol-500);
+  border-color: var(--sol-500);
+}
 input:disabled, select:disabled {
-  background: #f5f5f5;
-  color: #555;
+  background: var(--mist-050);
+  color: var(--ink-400);
 }
-
-textarea {
-  resize: vertical;
-}
+textarea { resize: vertical; }
 
 label {
   display: block;
   margin-bottom: 4px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-  color: #333;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-400);
 }
 
-.form-group {
-  margin-bottom: 14px;
+.form-group { margin-bottom: 14px; }
+
+/* ---------- utilities ---------- */
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* graphite instrument panel embedded in a mist screen */
+.panel-dark {
+  background: var(--graphite-800);
+  border: 1px solid var(--alloy-600);
+  color: var(--alloy-100);
+  clip-path: var(--chamfer);
+}
+
+/* mist recess (read-only info) */
+.recess {
+  background: var(--mist-050);
+  border: 1px solid var(--mist-200);
+  clip-path: var(--chamfer);
+}
+
+/* ---------- login split ---------- */
+
+.login-split {
+  display: flex;
+  min-height: 100dvh;
+}
+.login-dark {
+  width: 40%;
+  min-width: 300px;
+  background: var(--graphite-900);
+  border-right: 1px solid var(--alloy-600); /* the seam */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  padding: 48px 32px;
+  position: relative;
+  overflow: hidden;
+}
+/* the single permitted gradient: 8% radial falloff behind the origin */
+.login-dark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 42%, rgba(248, 90, 40, 0.08), transparent 55%);
+  pointer-events: none;
+}
+.login-light {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: var(--mist-000);
+}
+@media (max-width: 720px) {
+  .login-split { flex-direction: column; }
+  .login-dark {
+    width: 100%;
+    min-height: 180px;
+    border-right: none;
+    border-bottom: 1px solid var(--alloy-600);
+    padding: 32px 24px;
+  }
+}
+
+/* ---------- terminator ring motion ---------- */
+
+.ring-spin { animation: ring-rotate 1.6s linear infinite; }
+@keyframes ring-rotate { to { transform: rotate(360deg); } }
+
+/* ---------- login cinema: panel-curtain reveal ---------- */
+
+.cine-wrap { height: 320vh; }
+.cine-wrap.cine-static { height: auto; }
+
+.cine-stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--graphite-900);
+  perspective: 1200px;
+}
+.cine-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* filmic chrome: letterbox + vignette */
+.cine-bar {
+  position: absolute;
+  left: 0; right: 0;
+  height: 7vh;
+  background: #000;
+  z-index: 6;
+  will-change: transform;
+  pointer-events: none;
+}
+.cine-bar-t { top: 0; transform-origin: top; }
+.cine-bar-b { bottom: 0; transform-origin: bottom; }
+
+.cine-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: radial-gradient(ellipse 72% 62% at 50% 46%, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+/* film grain: static noise, breaks banding, reads as celluloid */
+.cine-grain {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+  opacity: 0.055;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.9'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+/* scroll progress: one orange hairline, the only UI chrome */
+.cine-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: 0;
+  z-index: 10;
+  background: var(--sol-500);
+  box-shadow: 0 0 8px rgba(248, 90, 40, 0.7);
+  pointer-events: none;
+}
+
+/* warm halo behind the mark when it lands */
+.cine-logo-glow {
+  position: absolute;
+  width: 380px;
+  height: 380px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(248, 90, 40, 0.16), rgba(248, 90, 40, 0.04) 45%, transparent 70%);
+  z-index: -1;
+}
+
+/* dark glass card — the film never cuts to a white room */
+.cine-card-dark {
+  background: rgba(15, 19, 26, 0.82);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  border: 1px solid rgba(216, 222, 230, 0.14);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.cine-card-dark label { color: var(--alloy-400); }
+.cine-card-dark input {
+  background: rgba(8, 10, 14, 0.72);
+  border-color: rgba(138, 144, 153, 0.32);
+  color: var(--alloy-100);
+}
+.cine-card-dark input:hover:not(:disabled) { border-color: rgba(138, 144, 153, 0.6); }
+.cine-card-dark input:focus-visible { border-color: var(--sol-500); }
+.cine-card-dark a { color: var(--alloy-400); }
+.cine-card-dark a:hover { text-decoration-color: var(--sol-500); }
+
+/* a slow ember sheen crossing the card's top edge */
+.cine-card { position: relative; }
+.cine-card-dark::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 122, 61, 0.65), transparent);
+  background-size: 200% 100%;
+  animation: card-sheen 4.5s var(--ease) infinite;
+  pointer-events: none;
+}
+@keyframes card-sheen {
+  0%   { background-position: 120% 0; opacity: 0.2; }
+  50%  { background-position: 0% 0;   opacity: 1; }
+  100% { background-position: -120% 0; opacity: 0.2; }
+}
+.cine-static .cine-stage { position: relative; min-height: 100dvh; }
+
+/* the sun behind the panels: seam line, then bloom */
+.cine-seam {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: linear-gradient(180deg, transparent, var(--sol-400) 18%, var(--sol-500) 50%, var(--sol-400) 82%, transparent);
+  filter: blur(0.5px) drop-shadow(0 0 14px rgba(248, 90, 40, 0.9));
+  opacity: 0;
+}
+.cine-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 46%, rgba(248, 90, 40, 0.22), rgba(248, 90, 40, 0.05) 34%, transparent 62%);
+  opacity: 0;
+}
+
+/* solar panels: cell grid, aluminium frame, glass sheen */
+.cine-panel {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 51vw;
+  will-change: transform;
+  background: linear-gradient(160deg, #10141c 0%, #151b26 50%, #0d1119 100%);
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
+}
+.cine-panel-l { left: 0;  transform-origin: left center; border-right: 3px solid #39404b; }
+.cine-panel-r { right: 0; transform-origin: right center; border-left: 3px solid #39404b; }
+.cine-cells {
+  position: absolute;
+  inset: 20px;
+  border: 2px solid rgba(216, 222, 230, 0.22);
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(100%/6 - 2px), rgba(138, 144, 153, 0.30) calc(100%/6 - 2px) calc(100%/6)),
+    repeating-linear-gradient(0deg,  transparent 0 calc(100%/9 - 2px), rgba(138, 144, 153, 0.30) calc(100%/9 - 2px) calc(100%/9)),
+    linear-gradient(135deg, #17233a 0%, #111a2c 52%, #0d1523 100%);
+}
+.cine-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 32%, rgba(255, 255, 255, 0.07) 46%, transparent 58%);
+  pointer-events: none;
+}
+
+/* logo moment */
+.cine-logo {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  opacity: 0;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+.cine-logo .cine-sub { color: var(--alloy-100); font-size: 15px; font-weight: 500; }
+.cine-logo .cine-org { color: var(--alloy-400); }
+
+/* the form arrives as the final act */
+.cine-form {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  opacity: 0;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+.cine-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--mist-000);
+  border: 1px solid var(--mist-200);
+  clip-path: var(--chamfer);
+  padding: 28px 30px 26px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+/* hint + skip */
+.cine-hint {
+  position: absolute;
+  z-index: 7;
+  bottom: calc(7vh + 20px);
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--alloy-400);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.cine-hint::after {
+  content: '';
+  width: 1px;
+  height: 26px;
+  background: linear-gradient(180deg, var(--alloy-400), transparent);
+  animation: hint-drop 1.8s var(--ease) infinite;
+}
+@keyframes hint-drop {
+  0%   { transform: scaleY(0); transform-origin: top; opacity: 0; }
+  30%  { transform: scaleY(1); opacity: 1; }
+  100% { transform: scaleY(1) translateY(10px); transform-origin: top; opacity: 0; }
+}
+.cine-skip {
+  position: absolute;
+  z-index: 7;
+  bottom: calc(7vh + 16px);
+  right: 26px;
+  background: none;
+  border: none;
+  clip-path: none;
+  color: var(--alloy-400);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 6px 8px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cine-skip:hover { color: var(--alloy-100); background: none; }
+
+@media (max-width: 720px) {
+  .cine-panel { width: 52vw; }
+  .cine-card { padding: 22px 20px; }
+}
+
+/* ---------- login visual effects ---------- */
+
+/* faint engineering grid on the graphite panel */
+.login-dark::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(0deg,   transparent, transparent 39px, rgba(43, 51, 62, 0.35) 39px, rgba(43, 51, 62, 0.35) 40px),
+    repeating-linear-gradient(90deg,  transparent, transparent 39px, rgba(43, 51, 62, 0.35) 39px, rgba(43, 51, 62, 0.35) 40px);
+  pointer-events: none;
+}
+
+/* breathing glow behind the origin mark */
+.login-dark::before {
+  animation: glow-pulse 6s ease-in-out infinite;
+}
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.7; }
+  50%      { opacity: 1; }
+}
+
+/* the origin mark's rays rotate imperceptibly slowly */
+.origin-slow { animation: ring-rotate 90s linear infinite; }
+
+/* drifting spark field */
+.fx-dot {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: dot-drift var(--dur, 14s) ease-in-out var(--delay, 0s) infinite;
+  opacity: 0;
+}
+@keyframes dot-drift {
+  0%   { transform: translate3d(0, 12px, 0) scale(0.6); opacity: 0; }
+  15%  { opacity: var(--peak, 0.5); }
+  70%  { opacity: var(--peak, 0.5); }
+  100% { transform: translate3d(var(--dx, 8px), -70px, 0) scale(1); opacity: 0; }
+}
+
+/* staggered entrance */
+.fade-up {
+  opacity: 0;
+  animation: fade-up 600ms var(--ease) forwards;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* form panel slide on tab switch */
+.form-swap { animation: form-swap 260ms var(--ease); }
+@keyframes form-swap {
+  from { opacity: 0; transform: translateX(10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* primary button glow, login only */
+.login-light .btn-primary {
+  transition: background 200ms var(--ease), box-shadow 250ms var(--ease), transform 120ms var(--ease);
+}
+.login-light .btn-primary:hover:not(:disabled) {
+  box-shadow: 0 0 16px rgba(248, 90, 40, 0.35);
+}
+
+/* input focus lift, login only */
+.login-light input {
+  transition: border-color 200ms var(--ease), box-shadow 200ms var(--ease), transform 200ms var(--ease);
+}
+.login-light input:focus-visible {
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- tables ---------- */
+
+.tbl-row { transition: background 150ms var(--ease); }
+.tbl-row:hover { background: var(--mist-050); }
+
+/* ---------- shared polish ---------- */
+
+::selection { background: var(--sol-tint); color: var(--ink-900); }
+
+/* composed mist panel: hairline, air, chamfer */
+.panel {
+  background: var(--mist-000);
+  border: 1px solid var(--mist-200);
+  clip-path: var(--chamfer);
+  padding: 20px 22px;
+}
+.panel-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.panel-sub {
+  font-size: 12px;
+  color: var(--ink-400);
+  margin-bottom: 16px;
+}
+
+/* live pulse for a running state */
+.pulse-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--signal-ok);
+  animation: pulse-dot 1.6s var(--ease) infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(30, 158, 106, 0.5); }
+  50%      { box-shadow: 0 0 0 6px rgba(30, 158, 106, 0); }
+}
+
+/* BN threshold instrument: real rule, 5h of active time */
+.bn-bar {
+  height: 3px;
+  background: var(--alloy-600);
+  position: relative;
+  overflow: hidden;
+  margin-top: 12px;
+}
+.bn-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--signal-ok);
+  transition: width 1s linear, background 400ms var(--ease);
+}
+.bn-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--alloy-400);
+  margin-top: 5px;
+}
+
+/* light-surface scrollbars */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: var(--mist-050); }
+*::-webkit-scrollbar-thumb { background: var(--mist-200); border: 2px solid var(--mist-050); }
+*::-webkit-scrollbar-thumb:hover { background: var(--alloy-400); }
+
+/* ---------- dark scrollbars (sidebar) ---------- */
+
+.scroll-dark::-webkit-scrollbar { width: 8px; }
+.scroll-dark::-webkit-scrollbar-track { background: var(--graphite-900); }
+.scroll-dark::-webkit-scrollbar-thumb { background: var(--alloy-600); }
+.scroll-dark::-webkit-scrollbar-thumb:hover { background: var(--alloy-400); }

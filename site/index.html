@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nuevosol — The steel underneath</title>
+  <meta name="description" content="Nuevosol designs solar plant layouts, engineers the mounting structures, and manufactures the structural components. The steel underneath, holding true for twenty-five years." />
+  <meta property="og:title" content="Nuevosol — The steel underneath" />
+  <meta property="og:description" content="Solar structures designed, engineered, and made under one roof." />
+  <script type="module" src="/src/main.js"></script>
+</head>
+<body>
+  <!-- Wordmark + terminator-ring scroll progress. The only chrome. -->
+  <a class="mark" href="#act-0" aria-label="Nuevosol. Scroll progress indicator.">
+    <span class="mark-word">Nuev</span><svg class="mark-o" viewBox="-60 -60 120 120" aria-hidden="true">
+      <g class="mark-rays"></g>
+      <circle r="34" fill="none" stroke="currentColor" stroke-width="7"/>
+      <clipPath id="oclip"><rect id="oclip-rect" x="-34" y="-34" width="0" height="68"/></clipPath>
+      <circle r="34" fill="currentColor" clip-path="url(#oclip)"/>
+    </svg><span class="mark-word">sol</span>
+  </a>
+
+  <!-- The 3D scene. Decoration for sighted pointer users; story lives below. -->
+  <canvas id="scene" aria-hidden="true"></canvas>
+
+  <!-- DOM overlays driven by the same t -->
+  <div id="act0" class="ov ov-center" aria-hidden="true">
+    <div class="act0-word">Nuev<span class="act0-o"></span>sol</div>
+  </div>
+
+  <div id="act6" class="ov" aria-hidden="true">
+    <!-- SWAP POINT act6-frame-1: replace .frame-vis with <video src="rollforming.mp4" muted playsinline> -->
+    <figure class="frame" data-frame="0">
+      <div class="frame-vis vis-rollform"></div>
+      <figcaption class="mono">2.0 mm G350 coil · rolled at 24 m/min</figcaption>
+    </figure>
+    <!-- SWAP POINT act6-frame-2: replace .frame-vis with <video src="galvanising.mp4" muted playsinline> -->
+    <figure class="frame" data-frame="1">
+      <div class="frame-vis vis-galv"></div>
+      <figcaption class="mono">zinc bath 449 °C · 600 g/m² coating</figcaption>
+
+    </figure>
+    <!-- SWAP POINT act6-frame-3: replace .frame-vis with <video src="cutedge.mp4" muted playsinline> -->
+    <figure class="frame" data-frame="2">
+      <div class="frame-vis vis-edge"></div>
+      <figcaption class="mono">chamfered cut · tolerance ±0.5 mm</figcaption>
+    </figure>
+    <p class="frame-line">Designed, engineered, and made under one roof.</p>
+  </div>
+
+  <div id="act7data" class="ov ov-data mono" aria-hidden="true">
+    <table>
+      <tbody>
+        <tr><td>design wind speed</td><td>180 km/h</td></tr>
+        <tr><td>governing load case</td><td>wind uplift, stowed</td></tr>
+        <tr><td>installation tolerance</td><td>±5 mm</td></tr>
+        <tr><td>service life</td><td>25 years</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="act8" class="ov ov-center" aria-hidden="true">
+    <div class="act8-word">Nuev<span class="act8-o"></span>sol</div>
+    <a class="cta" href="mailto:contact@nuevo-sol.com?subject=Project%20enquiry">Start a project</a>
+    <p class="cta-sub mono">contact@nuevo-sol.com</p>
+  </div>
+
+  <!-- The narrative as real HTML. Screen readers read this; the static
+       version (reduced motion / no WebGL) displays it as eight stills. -->
+  <main id="story">
+    <section class="act" id="act-0" data-act="0">
+      <h1 class="visually-hidden-when-3d">Nuevosol</h1>
+      <p class="act-line"></p>
+    </section>
+    <section class="act" id="act-1" data-act="1">
+      <p class="act-line">Before the light arrives, the steel is already true.</p>
+    </section>
+    <section class="act" id="act-2" data-act="2">
+      <p class="act-line">A plant begins as coordinates.</p>
+    </section>
+    <section class="act" id="act-3" data-act="3">
+      <p class="act-line">We build the part you'll never see again.</p>
+    </section>
+    <section class="act" id="act-4" data-act="4">
+      <p class="act-line">Ten thousand modules. One tolerance.</p>
+    </section>
+    <section class="act" id="act-5" data-act="5">
+      <p class="act-line">Twenty-five years of following the sun.</p>
+    </section>
+    <section class="act" id="act-6" data-act="6">
+      <p class="act-line">Designed, engineered, and made under one roof.</p>
+    </section>
+    <section class="act" id="act-7" data-act="7">
+      <p class="act-line">The sun sets. Nothing moves.</p>
+      <dl class="act-data mono">
+        <div><dt>design wind speed</dt><dd>180 km/h</dd></div>
+        <div><dt>governing load case</dt><dd>wind uplift, stowed</dd></div>
+        <div><dt>installation tolerance</dt><dd>±5 mm</dd></div>
+        <div><dt>service life</dt><dd>25 years</dd></div>
+      </dl>
+    </section>
+    <section class="act" id="act-8" data-act="8">
+      <p class="act-line">Start a project.</p>
+      <a class="cta" href="mailto:contact@nuevo-sol.com?subject=Project%20enquiry">Start a project</a>
+    </section>
+  </main>
+</body>
+</html>

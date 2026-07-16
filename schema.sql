@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   review_paused_seconds INTEGER,
   review_outcome TEXT,
   review_outcome_reason TEXT,
+  self_qc_seconds INTEGER,
+  self_qc_items JSONB,
+  total_with_qc_seconds INTEGER,
   active_time TEXT GENERATED ALWAYS AS (
     lpad(floor(total_active_seconds / 3600)::text, 2, '0') || ':' ||
     lpad(floor((total_active_seconds % 3600) / 60)::text, 2, '0') || ':' ||
@@ -72,7 +75,15 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE TABLE IF NOT EXISTS task_events (
   id SERIAL PRIMARY KEY,
   task_id INTEGER REFERENCES tasks(id),
-  event_type TEXT NOT NULL CHECK (event_type IN ('start', 'pause', 'resume', 'stuck_reason', 'stop', 'complete', 'size_selected', 'review')),
+  event_type TEXT NOT NULL CHECK (event_type IN ('start', 'pause', 'resume', 'stuck_reason', 'stop', 'complete', 'size_selected', 'review', 'self_qc')),
   note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS qc_items (
+  id SERIAL PRIMARY KEY,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
