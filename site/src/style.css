@@ -1,0 +1,239 @@
+/* Nuevosol cinematic site — tokens + DOM layers.
+   Orange is light, never paint: no orange background-color anywhere. */
+
+:root {
+  --sol-500: #F85A28;
+  --sol-400: #FF7A3D;
+  --sol-600: #C63F17;
+  --void:    #08090B;
+  --dusk:    #101725;
+  --steel-700: #4A4F57;
+  --steel-400: #8A9099;
+  --steel-100: #D9DDE2;
+  --paper:   #FFFFFF;
+  --display: 'Archivo Black', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: auto; }
+body {
+  background: var(--void);
+  color: var(--steel-100);
+  font-family: var(--mono);
+  overflow-x: hidden;
+}
+
+/* scroll length: the day. */
+body.webgl { height: 800vh; }
+
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ---- wordmark + ring progress (the only chrome) ---- */
+.mark {
+  position: fixed;
+  top: 20px;
+  left: 24px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--sol-500);
+  font-family: var(--display);
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.mark:focus-visible { outline: 2px solid var(--sol-500); outline-offset: 4px; }
+.mark-o { width: 15px; height: 15px; margin: 0 1px; }
+.mark-rays line { stroke: currentColor; stroke-width: 6; }
+
+/* ---- canvas ---- */
+#scene {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  display: block;
+  z-index: 0;
+}
+
+/* ---- overlays ---- */
+.ov {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+  transition: none;
+}
+.ov-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}
+
+/* Act 0 / Act 8 wordmark, centred, at rest */
+.act0-word, .act8-word {
+  font-family: var(--display);
+  font-size: clamp(34px, 5vw, 64px);
+  color: var(--sol-500);
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+}
+.act0-o, .act8-o {
+  width: 0.62em;
+  height: 0.62em;
+  margin: 0 0.05em;
+  border: 0.055em solid var(--sol-500);
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+}
+.act8-o::after {
+  content: '';
+  position: absolute;
+  inset: -0.055em;
+  border-radius: 50%;
+  background: var(--sol-500);
+}
+
+.cta {
+  pointer-events: auto;
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  color: var(--void);
+  background: var(--steel-100);
+  padding: 14px 34px;
+  text-decoration: none;
+  clip-path: polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
+  transition: background 200ms cubic-bezier(0.22, 1, 0.36, 1), color 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cta:hover { background: var(--sol-500); color: var(--paper); }
+.cta:focus-visible { outline: 2px solid var(--sol-500); outline-offset: 4px; }
+.cta-sub { color: var(--steel-400); font-size: 12px; }
+
+/* ---- Act 6: three locked-off factory frames, machine cuts ---- */
+#act6 { background: var(--paper); }
+.frame {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 26px;
+}
+.frame.on { display: flex; }
+.frame-vis { width: min(72vw, 900px); height: min(52vh, 460px); }
+.frame figcaption { color: #131820; font-size: 13px; letter-spacing: 0.02em; }
+.frame-line {
+  position: absolute;
+  bottom: 7vh;
+  width: 100%;
+  text-align: center;
+  font-family: var(--display);
+  font-size: clamp(17px, 2.4vw, 30px);
+  color: #131820;
+}
+
+/* procedural stand-ins until Cance 2.0 plates land (swap points in HTML) */
+.vis-rollform {
+  background:
+    repeating-linear-gradient(90deg,
+      #8A9099 0 26px, #b9bec6 26px 30px, #565b63 30px 34px, #8A9099 34px 60px);
+}
+.vis-galv {
+  background:
+    radial-gradient(ellipse 120% 40% at 50% 82%, #d9dde2 0%, #8a9099 34%, #3a3f47 72%, #23262c 100%);
+}
+.vis-edge {
+  background: linear-gradient(135deg, #b9bec6 0 46%, #8A9099 46% 52%, #565b63 52% 100%);
+  clip-path: polygon(8% 0, 100% 0, 100% 84%, 92% 100%, 0 100%, 0 16%);
+}
+
+/* ---- Act 7 data ---- */
+.ov-data {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 0 0 12vh 8vw;
+}
+.ov-data table { border-collapse: collapse; font-size: clamp(13px, 1.4vw, 17px); }
+.ov-data td {
+  padding: 10px 34px 10px 0;
+  color: var(--steel-100);
+  border-bottom: 1px solid rgba(138, 144, 153, 0.35);
+}
+.ov-data td + td { color: var(--steel-400); text-align: right; padding-right: 0; }
+
+/* ---- the semantic story ---- */
+#story { position: relative; z-index: 5; }
+body.webgl #story {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* keyboard act anchors need scroll targets in webgl mode */
+body.webgl .act-anchor {
+  position: absolute;
+  width: 1px; height: 1px;
+  left: 0;
+}
+
+/* ---- STATIC VERSION: reduced motion / no WebGL --------------------------
+   Eight stills, same lines, same order. A dignified print of the film. */
+body.static { height: auto; }
+body.static #scene, body.static .ov { display: none; }
+body.static #story { position: static; width: auto; height: auto; clip-path: none; overflow: visible; white-space: normal; }
+body.static .act {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12vh 8vw;
+  border-bottom: 1px solid rgba(138, 144, 153, 0.25);
+}
+body.static .act-line {
+  font-family: var(--display);
+  font-size: clamp(28px, 5.6vw, 76px);
+  line-height: 1.06;
+  max-width: 18ch;
+  color: var(--steel-100);
+}
+body.static #act-0 h1 {
+  font-family: var(--display);
+  color: var(--sol-500);
+  font-size: clamp(34px, 5vw, 64px);
+}
+body.static #act-0 .act-line { display: none; }
+/* each still carries the hour's light as a background wash, not a photo fake */
+body.static #act-0 { background: var(--void); }
+body.static #act-1 { background: linear-gradient(0deg, #241109 0%, var(--void) 55%); }
+body.static #act-2 { background: linear-gradient(0deg, #3a2313 0%, #100a07 60%); }
+body.static #act-3 { background: linear-gradient(0deg, #4a2c14 0%, #14100b 58%); }
+body.static #act-4 { background: linear-gradient(0deg, #4e5866 0%, #22262d 60%); }
+body.static #act-5 { background: linear-gradient(0deg, #5b6673 0%, #262b33 62%); }
+body.static #act-6 { background: var(--paper); }
+body.static #act-6 .act-line { color: #131820; }
+body.static #act-7 { background: linear-gradient(0deg, var(--dusk) 0%, var(--void) 70%); }
+body.static #act-8 { background: var(--void); align-items: flex-start; }
+body.static .act-data { margin-top: 5vh; font-size: 15px; color: var(--steel-400); }
+body.static .act-data div { display: flex; gap: 24px; padding: 8px 0; border-bottom: 1px solid rgba(138,144,153,0.3); max-width: 460px; justify-content: space-between; }
+body.static .act-data dd { color: var(--steel-100); }
+body.static .cta { margin-top: 5vh; display: inline-block; }
+
+.visually-hidden-when-3d { }
+
+@media (max-width: 720px) {
+  .ov-data { padding: 0 6vw 10vh; }
+  .frame-vis { width: 86vw; height: 40vh; }
+}

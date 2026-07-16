@@ -17,5 +17,8 @@ echo [2/2] Copying to backend\public...
 if exist "%BACKEND_PUBLIC%" rmdir /s /q "%BACKEND_PUBLIC%"
 xcopy /E /I /Y "%FRONTEND%\dist" "%BACKEND_PUBLIC%" >nul
 
+REM Restore the marketing site under /site (built separately in site\)
+if exist "%SCRIPT_DIR%site\dist" xcopy /E /I /Y "%SCRIPT_DIR%site\dist" "%BACKEND_PUBLIC%\site" >nul
+
 echo.
 echo Done. Run: pm2 restart es-qr-tracker

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
+import Ring from '../components/Ring';
+import Wordmark from '../components/Wordmark';
 
 function formatDuration(secs) {
   const s = Math.max(0, secs || 0);
@@ -18,6 +20,13 @@ function getLiveSeconds(task) {
   return base + Math.max(0, elapsed);
 }
 
+// Normalise stored self-QC into [{label, checked}]. Legacy rows stored bare
+// strings (all were checked); new rows store the full {label, checked} snapshot.
+function qcItemsList(raw) {
+  if (!Array.isArray(raw) || !raw.length) return [];
+  return raw.map(x => (typeof x === 'string' ? { label: x, checked: true } : { label: x.label, checked: !!x.checked }));
+}
+
 const OUTCOME_LABEL = { closed_out: 'Closed Out', stuck: 'Stuck', ier: 'IER' };
 
 function reviewStatus(t) {
@@ -28,34 +37,85 @@ function reviewStatus(t) {
 }
 
 const REVIEW_STATUS_COLOR = {
-  'Closed Out': '#276749', 'Stuck': '#c53030', 'IER': '#d69e2e',
-  'Reviewed': '#276749', 'In Review': '#d69e2e', 'Paused': '#3182ce', 'Pending': '#888',
+  'Closed Out': 'var(--signal-ok)', 'Stuck': 'var(--signal-stop)', 'IER': 'var(--signal-warn)',
+  'Reviewed': 'var(--signal-ok)', 'In Review': 'var(--signal-warn)', 'Paused': 'var(--ink-400)', 'Pending': 'var(--ink-400)',
+};
+
+// ring grammar: hollow = pending, half = in a state, solid = terminal
+const REVIEW_STATUS_RING = {
+  'Closed Out': { color: 'var(--signal-ok)',   fill: 1 },
+  'Stuck':      { color: 'var(--signal-stop)', fill: 1 },
+  'IER':        { color: 'var(--signal-warn)', fill: 1 },
+  'Reviewed':   { color: 'var(--signal-ok)',   fill: 1 },
+  'In Review':  { color: 'var(--signal-warn)', fill: 0.5 },
+  'Paused':     { color: 'var(--alloy-400)',   fill: 0.5 },
+  'Pending':    { color: 'var(--alloy-400)',   fill: 0 },
 };
 
 function fmtDT(iso) {
   return iso ? new Date(iso).toLocaleString() : '—';
 }
 
-const TH = { padding: '8px 12px', border: '1px solid #ccc', background: '#f4f4f4', textAlign: 'left', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' };
+const TH = {
+  padding: '8px 12px', borderBottom: '1px solid var(--mist-200)', background: 'var(--mist-050)',
+  textAlign: 'left', fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap',
+  textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--ink-400)',
+};
 const TH_STICKY = { ...TH, position: 'sticky', top: 0, zIndex: 1 };
-const TD = { padding: '7px 12px', border: '1px solid #e8e8e8', fontSize: 13, verticalAlign: 'top' };
+const TD = { padding: '8px 12px', borderBottom: '1px solid rgba(227,230,235,0.55)', fontSize: 13, verticalAlign: 'top' };
+const TD_NUM = { ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' };
 // ~15 rows then vertical scroll for the rest.
-const SCROLL_BOX = { overflowX: 'auto', overflowY: 'auto', maxHeight: 520 };
+const SCROLL_BOX = { overflowX: 'auto', overflowY: 'auto', maxHeight: 520, border: '1px solid var(--mist-200)' };
 
+// status colors carried by the signals, never orange
 const STATE_COLORS = {
-  'stopped':          '#f59e0b',
-  'stuck':            '#ef4444',
-  'uploaded':         '#10b981',
-  'work in progress': '#6366f1',
+  'stopped':          'var(--alloy-400)',
+  'stuck':            'var(--signal-stop)',
+  'uploaded':         'var(--signal-ok)',
+  'work in progress': 'var(--signal-warn)',
 };
 
-function lighten(hex, amt) {
-  const n = parseInt(hex.slice(1), 16);
-  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-  r = Math.round(r + (255 - r) * amt);
-  g = Math.round(g + (255 - g) * amt);
-  b = Math.round(b + (255 - b) * amt);
-  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
+// Task-state distribution over an arbitrary task list, in a stable slice order.
+function statePieFrom(list) {
+  const c = { 'stopped': 0, 'stuck': 0, 'uploaded': 0, 'work in progress': 0 };
+  for (const t of list) if (t.task_status in c) c[t.task_status]++;
+  return Object.keys(c).map(k => ({ label: k, value: c[k], color: STATE_COLORS[k] }));
+}
+
+// Review-outcome distribution over an arbitrary reviewer-task list.
+function outcomePieFrom(list) {
+  const c = { closed_out: 0, stuck: 0, ier: 0 };
+  for (const t of list) if (t.review_outcome in c) c[t.review_outcome]++;
+  return [
+    { label: 'Closed Out', value: c.closed_out, color: 'var(--signal-ok)' },
+    { label: 'Stuck',      value: c.stuck,      color: 'var(--signal-stop)' },
+    { label: 'IER',        value: c.ier,        color: 'var(--signal-warn)' },
+  ];
+}
+
+// Monday 00:00 of the week containing d.
+function startOfWeek(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+// First day 00:00 of the month containing d.
+function startOfMonth(d) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+// Titled frame around one pie so the three read as a set.
+function PieCard({ title, sub, children }) {
+  return (
+    <div style={{ flex: '1 1 420px', minWidth: 380 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
+        <h3 style={{ margin: 0, fontSize: 14, color: 'var(--ink-900)' }}>{title}</h3>
+        {sub && <span style={{ fontSize: 12, color: 'var(--ink-400)' }}>{sub}</span>}
+      </div>
+      {children}
+    </div>
+  );
 }
 
 function polar(cx, cy, r, angle) {
@@ -70,10 +130,12 @@ function slicePath(cx, cy, r, start, end) {
   return `M ${cx} ${cy} L ${sx} ${sy} A ${r} ${r} 0 ${large} 0 ${ex} ${ey} Z`;
 }
 
+// The donut is the terminator ring at scale: the sweep begins at the vertical
+// terminator (12 o'clock), flat token fills, depth from hairlines only.
 function StatePie({ data }) {
   const [hover, setHover] = useState(null);
   const total = data.reduce((s, d) => s + d.value, 0);
-  if (!total) return <div style={{ fontSize: 13, color: '#888' }}>No tasks in these states.</div>;
+  if (!total) return <div style={{ fontSize: 13, color: 'var(--ink-400)' }}>No tasks in these states.</div>;
 
   const SZ = 200, cx = 100, cy = 100, r = 88, inner = 58;
   let acc = 0;
@@ -88,57 +150,42 @@ function StatePie({ data }) {
   const active = hover !== null ? data[hover] : null;
 
   return (
-    <div style={{ display: 'flex', gap: 36, alignItems: 'center', flexWrap: 'wrap' }}>
+    <div style={{ display: 'inline-flex', gap: 36, alignItems: 'center', flexWrap: 'wrap', padding: '4px 0' }}>
       <svg width={SZ} height={SZ} viewBox={`0 0 ${SZ} ${SZ}`} style={{ overflow: 'visible' }}>
-        <defs>
-          {data.map(d => (
-            <linearGradient key={d.label} id={`pieGrad-${d.label.replace(/\s+/g, '-')}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={lighten(d.color, 0.22)} />
-              <stop offset="100%" stopColor={d.color} />
-            </linearGradient>
-          ))}
-          <filter id="pieShadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#1e293b" floodOpacity="0.22" />
-          </filter>
-        </defs>
-
-        <g filter="url(#pieShadow)">
-          {nonzero.length === 1 ? (
-            <circle
-              cx={cx} cy={cy} r={r} fill={`url(#pieGrad-${nonzero[0].label.replace(/\s+/g, '-')})`}
-              style={{ cursor: 'pointer' }}
-              onMouseEnter={() => setHover(nonzero[0].i)}
+        {nonzero.length === 1 ? (
+          <circle
+            cx={cx} cy={cy} r={r} fill={nonzero[0].color}
+            style={{ cursor: 'pointer' }}
+            onMouseEnter={() => setHover(nonzero[0].i)}
+            onMouseLeave={() => setHover(null)}
+          />
+        ) : slices.map(s => {
+          if (!s.value) return null;
+          const off = hover === s.i ? 8 : 0;
+          const [dx, dy] = off ? polar(0, 0, off, s.mid) : [0, 0];
+          return (
+            <path
+              key={s.label}
+              d={slicePath(cx, cy, r, s.start, s.end)}
+              fill={s.color}
+              stroke="var(--mist-000)"
+              strokeWidth={2.5}
+              transform={`translate(${dx} ${dy})`}
+              style={{ cursor: 'pointer', transition: 'transform 0.18s var(--ease)', opacity: hover === null || hover === s.i ? 1 : 0.4 }}
+              onMouseEnter={() => setHover(s.i)}
               onMouseLeave={() => setHover(null)}
             />
-          ) : slices.map(s => {
-            if (!s.value) return null;
-            const off = hover === s.i ? 10 : 0;
-            const [dx, dy] = off ? polar(0, 0, off, s.mid) : [0, 0];
-            return (
-              <path
-                key={s.label}
-                d={slicePath(cx, cy, r, s.start, s.end)}
-                fill={`url(#pieGrad-${s.label.replace(/\s+/g, '-')})`}
-                stroke="#fff"
-                strokeWidth={2.5}
-                strokeLinejoin="round"
-                transform={`translate(${dx} ${dy})`}
-                style={{ cursor: 'pointer', transition: 'transform 0.15s ease', opacity: hover === null || hover === s.i ? 1 : 0.45 }}
-                onMouseEnter={() => setHover(s.i)}
-                onMouseLeave={() => setHover(null)}
-              />
-            );
-          })}
-        </g>
+          );
+        })}
 
-        {/* Donut hole + center label */}
-        <circle cx={cx} cy={cy} r={inner} fill="#fff" />
+        {/* the hollow half of the instrument */}
+        <circle cx={cx} cy={cy} r={inner} fill="var(--mist-000)" />
         <text x={cx} y={active ? cy - 6 : cy - 2} textAnchor="middle"
-          style={{ fontSize: 30, fontWeight: 700, fill: active ? active.color : '#1e293b' }}>
+          style={{ fontSize: 30, fontWeight: 500, fontFamily: 'var(--font-mono)', fill: active ? active.color : 'var(--ink-900)' }}>
           {active ? active.value : total}
         </text>
         <text x={cx} y={active ? cy + 15 : cy + 18} textAnchor="middle"
-          style={{ fontSize: 11, fill: '#64748b', textTransform: 'capitalize' }}>
+          style={{ fontSize: 11, fill: 'var(--ink-400)', textTransform: 'capitalize' }}>
           {active ? `${active.label} · ${pct(active.value)}%` : 'Total tasks'}
         </text>
       </svg>
@@ -150,20 +197,17 @@ function StatePie({ data }) {
             onMouseEnter={() => setHover(s.i)}
             onMouseLeave={() => setHover(null)}
             style={{
-              display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6,
-              padding: '7px 10px', borderRadius: 8, cursor: 'pointer',
-              border: '1px solid', borderColor: hover === s.i ? s.color : '#eef2f7',
-              background: hover === s.i ? lighten(s.color, 0.9) : '#fafbfc',
-              transition: 'all 0.12s ease',
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '7px 8px', cursor: 'pointer',
+              borderBottom: '1px solid var(--mist-200)',
+              background: hover === s.i ? 'var(--mist-050)' : 'transparent',
+              transition: 'background 150ms var(--ease)',
             }}
           >
-            <span style={{ width: 12, height: 12, background: s.color, display: 'inline-block', borderRadius: '50%', flexShrink: 0 }} />
-            <span style={{ textTransform: 'capitalize', flex: 1, fontWeight: 500, color: '#334155' }}>{s.label}</span>
-            <span style={{ fontWeight: 700, color: '#1e293b' }}>{s.value}</span>
-            <span style={{
-              color: s.color, fontWeight: 600, fontSize: 12,
-              background: lighten(s.color, 0.85), padding: '1px 7px', borderRadius: 10, minWidth: 42, textAlign: 'center',
-            }}>{pct(s.value)}%</span>
+            <Ring size={11} color={s.color} fill={hover === s.i ? 1 : 0.5} />
+            <span style={{ textTransform: 'capitalize', flex: 1, fontWeight: 500, color: 'var(--ink-900)' }}>{s.label}</span>
+            <span className="mono" style={{ fontWeight: 500, color: 'var(--ink-900)' }}>{s.value}</span>
+            <span className="mono" style={{ color: 'var(--ink-400)', fontSize: 12, minWidth: 42, textAlign: 'right' }}>{pct(s.value)}%</span>
           </div>
         ))}
       </div>
@@ -174,13 +218,93 @@ function StatePie({ data }) {
 const EMPTY_FILTERS = { user_id: '', product: '', qr_no: '', task_status: '', date_from: '', date_to: '' };
 const EMPTY_REVIEWER_FILTERS = { reviewer_id: '', product: '', qr_no: '', reviewed: '', date_from: '', date_to: '' };
 
+// Per-product self-QC checklist editor (shown in the Products edit mode).
+function ProductQcEditor({ product }) {
+  const [items, setItems] = useState([]);
+  const [label, setLabel] = useState('');
+  const [busy, setBusy]   = useState(false);
+  const [err, setErr]     = useState('');
+
+  const load = useCallback(
+    () => api.admin.getQcItems(product.id).then(setItems).catch(() => {}),
+    [product.id],
+  );
+  useEffect(() => { load(); }, [load]);
+
+  async function add(e) {
+    e.preventDefault();
+    if (!label.trim()) return;
+    setBusy(true); setErr('');
+    try { await api.admin.addQcItem(product.id, label); setLabel(''); await load(); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+  async function del(id) {
+    setBusy(true); setErr('');
+    try { await api.admin.deleteQcItem(id); await load(); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div>
+      <div className="eyebrow" style={{ color: 'var(--ink-400)', marginBottom: 6 }}>Self-QC checklist</div>
+      {items.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--ink-400)', marginBottom: 8 }}>
+          No items — task uploads without a self-QC step.
+        </div>
+      )}
+      {items.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+          {items.map((it, idx) => (
+            <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <span className="mono" style={{ color: 'var(--ink-400)', fontSize: 11, minWidth: 18 }}>{idx + 1}.</span>
+              <span style={{ flex: 1 }}>{it.label}</span>
+              <button
+                onClick={() => del(it.id)} disabled={busy} title="Remove"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--signal-stop)', fontSize: 15, lineHeight: 1, padding: '0 2px' }}
+              >×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <form onSubmit={add} style={{ display: 'flex', gap: 8 }}>
+        <input
+          value={label}
+          onChange={e => { setLabel(e.target.value); setErr(''); }}
+          placeholder="New checklist item"
+          style={{ flex: 1, maxWidth: 340 }}
+        />
+        <button type="submit" disabled={busy || !label.trim()}>Add</button>
+      </form>
+      {err && <p style={{ color: 'var(--signal-stop)', fontSize: 12, marginTop: 6 }}>{err}</p>}
+    </div>
+  );
+}
+
+// Isolated so the second hand doesn't re-render the whole dashboard.
+function LiveClock({ style }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <span className="mono" style={style}>
+      {now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+    </span>
+  );
+}
+
 
 export default function AdminDashboard() {
   const [tasks,    setTasks]    = useState([]);
+  const [allTasks, setAllTasks] = useState([]); // unfiltered, for week/month pies
   const [summary,  setSummary]  = useState({ byStatus: [] });
   const [users,    setUsers]    = useState([]);
   const [filters,  setFilters]  = useState(EMPTY_FILTERS);
   const [reviewerTasks, setReviewerTasks] = useState([]);
+  const [allReviewerTasks, setAllReviewerTasks] = useState([]); // unfiltered, for week/month
   const [reviewerFilters, setReviewerFilters] = useState(EMPTY_REVIEWER_FILTERS);
   const [products, setProducts] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
@@ -188,6 +312,7 @@ export default function AdminDashboard() {
   const [newProduct, setNewProduct] = useState('');
   const [productError, setProductError] = useState('');
   const [productEditMode, setProductEditMode] = useState(false);
+  const [qcView, setQcView] = useState(null); // task whose self-QC list is open
   const [editingTask, setEditingTask] = useState(null);
   const [editForm, setEditForm]       = useState({});
   const [editError, setEditError]     = useState('');
@@ -214,11 +339,25 @@ export default function AdminDashboard() {
   }, [tasks]);
 
   // Task-state distribution over the filtered user tasks (for the pie chart).
-  const statePieData = useMemo(() => {
-    const c = { 'stopped': 0, 'stuck': 0, 'uploaded': 0, 'work in progress': 0 };
-    for (const t of tasks) if (t.task_status in c) c[t.task_status]++;
-    return Object.keys(c).map(k => ({ label: k, value: c[k], color: STATE_COLORS[k] }));
-  }, [tasks]);
+  const statePieData = useMemo(() => statePieFrom(tasks), [tasks]);
+
+  // Week/month pies run off the UNFILTERED task set, scoped by started_at,
+  // so they stay fixed regardless of what the filters above are set to.
+  const weekPieData = useMemo(() => {
+    const from = startOfWeek(new Date());
+    return statePieFrom(allTasks.filter(t => t.started_at && new Date(t.started_at) >= from));
+  }, [allTasks]);
+  const monthPieData = useMemo(() => {
+    const from = startOfMonth(new Date());
+    return statePieFrom(allTasks.filter(t => t.started_at && new Date(t.started_at) >= from));
+  }, [allTasks]);
+
+  const weekLabel = useMemo(() => {
+    const from = startOfWeek(new Date());
+    return `since ${from.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`;
+  }, []);
+  const monthLabel = useMemo(() =>
+    new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }), []);
 
   const summaryTotals = useMemo(() => summaryRows.reduce((a, r) => ({
     count: a.count + r.count,
@@ -253,15 +392,18 @@ export default function AdminDashboard() {
   );
 
   // Review-outcome distribution over the filtered reviewer task set (for the pie chart).
-  const outcomePieData = useMemo(() => {
-    const c = { closed_out: 0, stuck: 0, ier: 0 };
-    for (const t of reviewerTasks) if (t.review_outcome in c) c[t.review_outcome]++;
-    return [
-      { label: 'Closed Out', value: c.closed_out, color: '#10b981' },
-      { label: 'Stuck',      value: c.stuck,      color: '#ef4444' },
-      { label: 'IER',        value: c.ier,        color: '#f59e0b' },
-    ];
-  }, [reviewerTasks]);
+  const outcomePieData = useMemo(() => outcomePieFrom(reviewerTasks), [reviewerTasks]);
+
+  // Week/month outcome pies run off the UNFILTERED reviewer set, scoped by
+  // reviewed_at, so they stay fixed regardless of the reviewer filters.
+  const weekOutcomeData = useMemo(() => {
+    const from = startOfWeek(new Date());
+    return outcomePieFrom(allReviewerTasks.filter(t => t.reviewed_at && new Date(t.reviewed_at) >= from));
+  }, [allReviewerTasks]);
+  const monthOutcomeData = useMemo(() => {
+    const from = startOfMonth(new Date());
+    return outcomePieFrom(allReviewerTasks.filter(t => t.reviewed_at && new Date(t.reviewed_at) >= from));
+  }, [allReviewerTasks]);
 
   const reviewerTotals = useMemo(() => reviewerRows.reduce((a, r) => ({
     count: a.count + r.count,
@@ -287,6 +429,14 @@ export default function AdminDashboard() {
     }
   }, []);
 
+  // Unfiltered task set powering the week/month pies.
+  const fetchAllTasks = useCallback(() =>
+    api.admin.getTasks(EMPTY_FILTERS).then(setAllTasks).catch(console.error), []);
+
+  // Unfiltered reviewer set powering the week/month outcome pies.
+  const fetchAllReviewerTasks = useCallback(() =>
+    api.admin.getReviewerTasks(EMPTY_REVIEWER_FILTERS).then(setAllReviewerTasks).catch(console.error), []);
+
   const fetchReviewerData = useCallback(async (f) => {
     try {
       setReviewerTasks(await api.admin.getReviewerTasks(f));
@@ -301,9 +451,11 @@ export default function AdminDashboard() {
     fetchAllUsers();
     fetchData(EMPTY_FILTERS);
     fetchReviewerData(EMPTY_REVIEWER_FILTERS);
-    const timer = setInterval(() => tick(n => n + 1), 30_000);
+    fetchAllTasks();
+    fetchAllReviewerTasks();
+    const timer = setInterval(() => { tick(n => n + 1); fetchAllTasks(); fetchAllReviewerTasks(); }, 30_000);
     return () => clearInterval(timer);
-  }, [fetchData, fetchReviewerData, fetchProducts, fetchAllUsers]);
+  }, [fetchData, fetchReviewerData, fetchProducts, fetchAllUsers, fetchAllTasks, fetchAllReviewerTasks]);
 
   async function handleSetRole(id, role) {
     setRoleBusy(id);
@@ -511,7 +663,7 @@ export default function AdminDashboard() {
   }
 
   function downloadExcel() {
-    const taskHeaders = ['User', 'Product', 'QR No', 'Session Type', 'Session No', 'State', 'Started', 'Stopped', 'User Time', 'Paused Time', 'Auto-paused', 'Quote Size', 'Actual Time', 'Reviewer Time', 'Review Status', 'Status Reason', 'Review Start', 'Review End', 'BN Reason', 'Rework Reason', 'Reviewer'];
+    const taskHeaders = ['User', 'Product', 'QR No', 'Session Type', 'Session No', 'State', 'Started', 'Stopped', 'User Time', 'Self QC Time', 'User+QC Time', 'Self QC Checked', 'Self QC Unchecked', 'Paused Time', 'Auto-paused', 'Quote Size', 'Actual Time', 'Reviewer Time', 'Review Status', 'Status Reason', 'Review Start', 'Review End', 'BN Reason', 'Rework Reason', 'Reviewer'];
     const taskRows = tasks.map(t => [
       t.user_name,
       t.product,
@@ -522,6 +674,10 @@ export default function AdminDashboard() {
       t.started_at ? new Date(t.started_at).toLocaleString() : '',
       t.stopped_at ? new Date(t.stopped_at).toLocaleString() : '',
       formatDuration(getLiveSeconds(t)),
+      t.self_qc_seconds != null ? formatDuration(t.self_qc_seconds) : '',
+      t.total_with_qc_seconds != null ? formatDuration(t.total_with_qc_seconds) : '',
+      qcItemsList(t.self_qc_items).filter(x => x.checked).map(x => x.label).join('; '),
+      qcItemsList(t.self_qc_items).filter(x => !x.checked).map(x => x.label).join('; '),
       formatDuration(t.total_paused_seconds || 0),
       t.was_auto_paused ? 'Yes' : 'No',
       t.size_category || '',
@@ -583,14 +739,38 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div style={{ padding: 24, minWidth: 900 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
-        <h1>Admin Dashboard</h1>
-        <button onClick={handleLogout}>Logout</button>
-      </div>
+    <div style={{ minHeight: '100vh', background: 'var(--mist-000)' }}>
+      {/* graphite header band — the seam runs along its bottom edge */}
+      <header style={{
+        background: 'var(--graphite-900)',
+        borderBottom: '1px solid var(--alloy-600)',
+        padding: '0 24px',
+        height: 64,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
+          <Wordmark size={17} />
+          <h1 style={{ fontSize: 18, color: 'var(--alloy-100)' }}>Admin Dashboard</h1>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12,
+            color: 'var(--alloy-100)', border: '1px solid var(--alloy-600)', padding: '3px 10px',
+          }}>
+            <span className="pulse-dot" />
+            <span className="mono">{summary.byStatus.find(r => r.task_status === 'working')?.count ?? 0}</span>
+            <span style={{ color: 'var(--alloy-400)' }}>working now</span>
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <LiveClock style={{ color: 'var(--alloy-400)', fontSize: 12 }} />
+          <button className="btn-dark" onClick={handleLogout}>Logout</button>
+        </div>
+      </header>
 
+      <div style={{ padding: 24, minWidth: 900 }}>
       {/* Summary */}
-      <section style={{ marginBottom: 32 }}>
+      <section className="fade-up" style={{ marginBottom: 32 }}>
         <h2 style={{ marginBottom: 14 }}>Summary</h2>
         <div style={{ display: 'flex', gap: 40, flexWrap: 'wrap' }}>
           <div>
@@ -633,9 +813,9 @@ export default function AdminDashboard() {
       </section>
 
       {/* Users & Roles */}
-      <section style={{ marginBottom: 32 }}>
+      <section className="fade-up" style={{ marginBottom: 32, '--d': '70ms' }}>
         <h2 style={{ marginBottom: 12 }}>Users &amp; Roles</h2>
-        <p style={{ fontSize: 12, color: '#777', marginBottom: 10 }}>
+        <p style={{ fontSize: 12, color: 'var(--ink-400)', marginBottom: 10 }}>
           Grant a user reviewer access, or revoke it. Reviewers can review every user's tasks.
         </p>
         <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
@@ -651,7 +831,7 @@ export default function AdminDashboard() {
                 <td style={TD}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     {u.role === 'admin' ? (
-                      <span style={{ color: '#999', fontSize: 12 }}>—</span>
+                      <span style={{ color: 'var(--ink-400)', fontSize: 12 }}>—</span>
                     ) : u.role === 'reviewer' ? (
                       <>
                         <button
@@ -693,7 +873,7 @@ export default function AdminDashboard() {
                       <button
                         onClick={() => handleDeleteUser(u.id, u.name)}
                         disabled={roleBusy === u.id}
-                        style={{ fontSize: 12, padding: '2px 8px', color: '#c53030', marginLeft: 4 }}
+                        className="btn-danger" style={{ fontSize: 12, padding: '2px 8px', marginLeft: 4 }}
                       >
                         Delete
                       </button>
@@ -730,25 +910,35 @@ export default function AdminDashboard() {
             <button type="submit" disabled={!newProduct.trim()}>Add</button>
           </form>
         )}
-        {productError && <p style={{ color: '#b00', fontSize: 13, marginBottom: 8 }}>{productError}</p>}
+        {productError && <p style={{ color: 'var(--signal-stop)', fontSize: 13, marginBottom: 8 }}>{productError}</p>}
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {products.map(p => (
-            <div key={p.id} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '4px 10px', border: '1px solid #ccc', background: '#fafafa', fontSize: 13,
-            }}>
-              <span>{p.name}</span>
-              {productEditMode && (
-                <button
-                  onClick={() => handleDeleteProduct(p.id, p.name)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c00', fontSize: 14, padding: '0 2px', lineHeight: 1 }}
-                  title="Delete"
-                >×</button>
-              )}
-            </div>
-          ))}
-        </div>
+        {productEditMode ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 560 }}>
+            {products.map(p => (
+              <div key={p.id} style={{ border: '1px solid var(--mist-200)', background: 'var(--mist-050)', padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</span>
+                  <button
+                    onClick={() => handleDeleteProduct(p.id, p.name)}
+                    className="btn-danger" style={{ fontSize: 12, padding: '2px 8px' }}
+                  >Delete product</button>
+                </div>
+                <ProductQcEditor product={p} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {products.map(p => (
+              <div key={p.id} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '4px 10px', border: '1px solid var(--mist-200)', background: 'var(--mist-050)', fontSize: 13,
+              }}>
+                <span>{p.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Filters */}
@@ -756,22 +946,22 @@ export default function AdminDashboard() {
         <h2 style={{ marginBottom: 12 }}>Filters</h2>
         <form onSubmit={handleApply} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>User</label>
+            <label>User</label>
             <select name="user_id" value={filters.user_id} onChange={handleChange} style={{ width: 160 }}>
               <option value="">All users</option>
               {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Product</label>
+            <label>Product</label>
             <input name="product" value={filters.product} onChange={handleChange} placeholder="Filter…" style={{ width: 150 }} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>QR No</label>
+            <label>QR No</label>
             <input name="qr_no" value={filters.qr_no} onChange={handleChange} placeholder="Filter…" style={{ width: 120 }} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>State</label>
+            <label>State</label>
             <select name="task_status" value={filters.task_status} onChange={handleChange} style={{ width: 130 }}>
               <option value="">All</option>
               <option value="working">Working</option>
@@ -782,11 +972,11 @@ export default function AdminDashboard() {
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>From</label>
+            <label>From</label>
             <input type="date" name="date_from" value={filters.date_from} onChange={handleChange} style={{ width: 145 }} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>To</label>
+            <label>To</label>
             <input type="date" name="date_to" value={filters.date_to} onChange={handleChange} style={{ width: 145 }} />
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -797,11 +987,19 @@ export default function AdminDashboard() {
       </section>
 
       {/* Filtered summary */}
-      <section style={{ marginBottom: 28 }}>
+      <section className="fade-up" style={{ marginBottom: 28, '--d': '140ms' }}>
         <h2 style={{ marginBottom: 12 }}>Users — Summary (filtered)</h2>
-        <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#555' }}>Tasks by state</h3>
-        <div style={{ marginBottom: 20 }}>
-          <StatePie data={statePieData} />
+        <h3 style={{ margin: '0 0 12px', fontSize: 14, color: 'var(--ink-400)' }}>Tasks by state</h3>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 32, rowGap: 28, marginBottom: 20 }}>
+          <PieCard title="Filtered" sub="matches filters above">
+            <StatePie data={statePieData} />
+          </PieCard>
+          <PieCard title="This week" sub={weekLabel}>
+            <StatePie data={weekPieData} />
+          </PieCard>
+          <PieCard title="This month" sub={monthLabel}>
+            <StatePie data={monthPieData} />
+          </PieCard>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
@@ -811,7 +1009,7 @@ export default function AdminDashboard() {
             </thead>
             <tbody>
               {summaryRows.length === 0 && (
-                <tr><td colSpan={7} style={{ ...TD, color: '#888' }}>No tasks.</td></tr>
+                <tr><td colSpan={7} style={{ ...TD, color: 'var(--ink-400)' }}>No tasks.</td></tr>
               )}
               {summaryRows.map(r => (
                 <tr key={r.user}>
@@ -825,7 +1023,7 @@ export default function AdminDashboard() {
                 </tr>
               ))}
               {summaryRows.length > 0 && (
-                <tr style={{ fontWeight: 600, background: '#f4f4f4' }}>
+                <tr style={{ fontWeight: 600, background: 'var(--mist-050)' }}>
                   <td style={TD}>Total</td>
                   <td style={TD}>{summaryTotals.count}</td>
                   <td style={TD}>{formatDuration(summaryTotals.userSecs)}</td>
@@ -852,7 +1050,7 @@ export default function AdminDashboard() {
               <tr>
                 {[
                   'User', 'Product', 'QR No', 'Session Type', 'Session No', 'State',
-                  'Started', 'Stopped', 'User Time', 'Paused Time', 'Auto-paused',
+                  'Started', 'Stopped', 'User Time', 'Self QC Time', 'User+QC Time', 'Self QC Items', 'Paused Time', 'Auto-paused',
                   'Quote Size', 'Actual Time', 'Reviewer Time', 'Review Status', 'Status Reason', 'Review Start', 'Review End',
                   'BN Reason', 'Rework Reason', 'Reviewer', '',
                 ].map((h, i) => <th key={i} style={TH_STICKY}>{h}</th>)}
@@ -861,11 +1059,11 @@ export default function AdminDashboard() {
             <tbody>
               {tasks.length === 0 && (
                 <tr>
-                  <td colSpan={22} style={{ ...TD, color: '#888' }}>No tasks found.</td>
+                  <td colSpan={25} style={{ ...TD, color: 'var(--ink-400)' }}>No tasks found.</td>
                 </tr>
               )}
               {tasks.map(task => (
-                <tr key={task.id}>
+                <tr key={task.id} className="tbl-row">
                   <td style={TD}>{task.user_name}</td>
                   <td style={TD}>{task.product}</td>
                   <td style={TD}>{task.qr_no}</td>
@@ -875,12 +1073,36 @@ export default function AdminDashboard() {
                   <td style={TD}>{task.started_at ? new Date(task.started_at).toLocaleString() : '—'}</td>
                   <td style={TD}>{task.stopped_at ? new Date(task.stopped_at).toLocaleString() : '—'}</td>
                   <td style={{ ...TD, fontWeight: 500 }}>{formatDuration(getLiveSeconds(task))}</td>
+                  <td style={TD}>{task.self_qc_seconds != null ? formatDuration(task.self_qc_seconds) : '—'}</td>
+                  <td style={{ ...TD, fontWeight: 500 }}>{task.total_with_qc_seconds != null ? formatDuration(task.total_with_qc_seconds) : '—'}</td>
+                  <td style={{ ...TD, whiteSpace: 'nowrap' }}>
+                    {(() => {
+                      const list = qcItemsList(task.self_qc_items);
+                      if (!list.length) return '—';
+                      const ok = list.filter(x => x.checked).length;
+                      return (
+                        <button
+                          onClick={() => setQcView(task)}
+                          style={{ fontSize: 12, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+                          title="View self-QC checklist"
+                        >
+                          <span style={{ color: 'var(--signal-ok)' }}>✓{ok}</span>
+                          <span style={{ color: 'var(--signal-stop)' }}>✗{list.length - ok}</span>
+                        </button>
+                      );
+                    })()}
+                  </td>
                   <td style={TD}>{formatDuration(task.total_paused_seconds || 0)}</td>
                   <td style={TD}>{task.was_auto_paused ? 'Yes' : 'No'}</td>
                   <td style={TD}>{task.size_category || '—'}</td>
                   <td style={TD}>{task.review_seconds != null ? formatDuration(task.review_seconds) : '—'}</td>
                   <td style={TD}>{task.review_duration_seconds != null ? formatDuration(task.review_duration_seconds) : '—'}</td>
-                  <td style={{ ...TD, color: REVIEW_STATUS_COLOR[reviewStatus(task)], fontWeight: 500 }}>{reviewStatus(task)}</td>
+                  <td style={{ ...TD, color: REVIEW_STATUS_COLOR[reviewStatus(task)], fontWeight: 500, whiteSpace: 'nowrap' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <Ring size={10} color={(REVIEW_STATUS_RING[reviewStatus(task)] || REVIEW_STATUS_RING['Pending']).color} fill={(REVIEW_STATUS_RING[reviewStatus(task)] || REVIEW_STATUS_RING['Pending']).fill} />
+                      {reviewStatus(task)}
+                    </span>
+                  </td>
                   <td style={{ ...TD, maxWidth: 200, whiteSpace: 'normal' }}>{task.review_outcome_reason || '—'}</td>
                   <td style={TD}>{fmtDT(task.review_first_started_at)}</td>
                   <td style={TD}>{fmtDT(task.review_ended_at)}</td>
@@ -903,22 +1125,22 @@ export default function AdminDashboard() {
 
         <form onSubmit={handleReviewerApply} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Reviewer</label>
+            <label>Reviewer</label>
             <select name="reviewer_id" value={reviewerFilters.reviewer_id} onChange={handleReviewerChange} style={{ width: 160 }}>
               <option value="">All reviewers</option>
               {reviewerOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Product</label>
+            <label>Product</label>
             <input name="product" value={reviewerFilters.product} onChange={handleReviewerChange} placeholder="Filter…" style={{ width: 150 }} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>QR No</label>
+            <label>QR No</label>
             <input name="qr_no" value={reviewerFilters.qr_no} onChange={handleReviewerChange} placeholder="Filter…" style={{ width: 120 }} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Reviewed</label>
+            <label>Reviewed</label>
             <select name="reviewed" value={reviewerFilters.reviewed} onChange={handleReviewerChange} style={{ width: 120 }}>
               <option value="">All</option>
               <option value="yes">Reviewed</option>
@@ -926,11 +1148,11 @@ export default function AdminDashboard() {
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>From</label>
+            <label>From</label>
             <input type="date" name="date_from" value={reviewerFilters.date_from} onChange={handleReviewerChange} style={{ width: 145 }} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>To</label>
+            <label>To</label>
             <input type="date" name="date_to" value={reviewerFilters.date_to} onChange={handleReviewerChange} style={{ width: 145 }} />
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -939,12 +1161,20 @@ export default function AdminDashboard() {
           </div>
         </form>
 
-        <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#555' }}>Review outcomes</h3>
-        <div style={{ marginBottom: 20 }}>
-          <StatePie data={outcomePieData} />
+        <h3 style={{ margin: '0 0 12px', fontSize: 14, color: 'var(--ink-400)' }}>Review outcomes</h3>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 32, rowGap: 28, marginBottom: 20 }}>
+          <PieCard title="Filtered" sub="matches filters above">
+            <StatePie data={outcomePieData} />
+          </PieCard>
+          <PieCard title="This week" sub={weekLabel}>
+            <StatePie data={weekOutcomeData} />
+          </PieCard>
+          <PieCard title="This month" sub={monthLabel}>
+            <StatePie data={monthOutcomeData} />
+          </PieCard>
         </div>
 
-        <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#555' }}>Reviewer Summary</h3>
+        <h3 style={{ margin: '0 0 8px', fontSize: 14, color: 'var(--ink-400)' }}>Reviewer Summary</h3>
         <div style={{ overflowX: 'auto', marginBottom: 20 }}>
           <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
@@ -953,7 +1183,7 @@ export default function AdminDashboard() {
             </thead>
             <tbody>
               {reviewerRows.length === 0 && (
-                <tr><td colSpan={6} style={{ ...TD, color: '#888' }}>No reviewer tasks.</td></tr>
+                <tr><td colSpan={6} style={{ ...TD, color: 'var(--ink-400)' }}>No reviewer tasks.</td></tr>
               )}
               {reviewerRows.map(r => (
                 <tr key={r.reviewer}>
@@ -966,7 +1196,7 @@ export default function AdminDashboard() {
                 </tr>
               ))}
               {reviewerRows.length > 0 && (
-                <tr style={{ fontWeight: 600, background: '#f4f4f4' }}>
+                <tr style={{ fontWeight: 600, background: 'var(--mist-050)' }}>
                   <td style={TD}>Total</td>
                   <td style={TD}>{reviewerTotals.count}</td>
                   <td style={TD}>{formatDuration(reviewerTotals.reviewerSecs)}</td>
@@ -980,7 +1210,7 @@ export default function AdminDashboard() {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ fontSize: 14, color: '#555' }}>Reviewed Tasks ({reviewerTasks.length})</h3>
+          <h3 style={{ fontSize: 14, color: 'var(--ink-400)' }}>Reviewed Tasks ({reviewerTasks.length})</h3>
           <button onClick={downloadReviewerExcel} disabled={reviewerTasks.length === 0}>Download Reviewer Data</button>
         </div>
         <div style={SCROLL_BOX}>
@@ -996,10 +1226,10 @@ export default function AdminDashboard() {
             </thead>
             <tbody>
               {reviewerTasks.length === 0 && (
-                <tr><td colSpan={16} style={{ ...TD, color: '#888' }}>No reviewer tasks found.</td></tr>
+                <tr><td colSpan={16} style={{ ...TD, color: 'var(--ink-400)' }}>No reviewer tasks found.</td></tr>
               )}
               {reviewerTasks.map(task => (
-                <tr key={task.id}>
+                <tr key={task.id} className="tbl-row">
                   <td style={TD}>{task.reviewer_name}</td>
                   <td style={TD}>{task.user_name}</td>
                   <td style={TD}>{task.product}</td>
@@ -1009,7 +1239,12 @@ export default function AdminDashboard() {
                   <td style={TD}>{task.review_duration_seconds != null ? formatDuration(task.review_duration_seconds) : '—'}</td>
                   <td style={TD}>{task.review_seconds != null ? formatDuration(task.review_seconds) : '—'}</td>
                   <td style={TD}>{task.size_category || '—'}</td>
-                  <td style={{ ...TD, color: REVIEW_STATUS_COLOR[reviewStatus(task)], fontWeight: 500 }}>{reviewStatus(task)}</td>
+                  <td style={{ ...TD, color: REVIEW_STATUS_COLOR[reviewStatus(task)], fontWeight: 500, whiteSpace: 'nowrap' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <Ring size={10} color={(REVIEW_STATUS_RING[reviewStatus(task)] || REVIEW_STATUS_RING['Pending']).color} fill={(REVIEW_STATUS_RING[reviewStatus(task)] || REVIEW_STATUS_RING['Pending']).fill} />
+                      {reviewStatus(task)}
+                    </span>
+                  </td>
                   <td style={{ ...TD, maxWidth: 200, whiteSpace: 'normal' }}>{task.review_outcome_reason || '—'}</td>
                   <td style={TD}>{fmtDT(task.review_first_started_at)}</td>
                   <td style={TD}>{fmtDT(task.review_ended_at)}</td>
@@ -1023,13 +1258,55 @@ export default function AdminDashboard() {
         </div>
       </section>
 
+      {/* Self-QC checklist viewer */}
+      {qcView && (() => {
+        const list = qcItemsList(qcView.self_qc_items);
+        const checked = list.filter(x => x.checked);
+        const unchecked = list.filter(x => !x.checked);
+        const Group = ({ title, items, color, mark }) => (
+          <div style={{ marginBottom: 16 }}>
+            <div className="eyebrow" style={{ color, marginBottom: 6 }}>{title} ({items.length})</div>
+            {items.length === 0
+              ? <div style={{ fontSize: 13, color: 'var(--ink-400)' }}>—</div>
+              : items.map((x, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '4px 0', borderBottom: '1px solid rgba(227,230,235,0.55)' }}>
+                    <span style={{ color, fontWeight: 600 }}>{mark}</span>
+                    <span style={{ flex: 1 }}>{x.label}</span>
+                  </div>
+                ))}
+          </div>
+        );
+        return (
+          <div
+            onClick={() => setQcView(null)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(12,15,19,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ background: 'var(--mist-000)', padding: 28, width: 460, maxHeight: '85vh', overflowY: 'auto', border: '1px solid var(--mist-200)', clipPath: 'var(--chamfer)' }}
+            >
+              <h2 style={{ marginBottom: 4 }}>Self QC — {qcView.product}</h2>
+              <div style={{ fontSize: 12, color: 'var(--ink-400)', marginBottom: 18 }}>
+                {qcView.user_name} · QR {qcView.qr_no} · {checked.length}/{list.length} checked
+                {qcView.self_qc_seconds != null && ` · ${formatDuration(qcView.self_qc_seconds)} spent`}
+              </div>
+              <Group title="Checked"   items={checked}   color="var(--signal-ok)"   mark="✓" />
+              <Group title="Unchecked" items={unchecked} color="var(--signal-stop)" mark="✗" />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                <button onClick={() => setQcView(null)}>Close</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Edit Modal */}
       {editingTask && (
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          position: 'fixed', inset: 0, background: 'rgba(12,15,19,0.55)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
         }}>
-          <div style={{ background: '#fff', padding: 28, width: 440, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 4px 24px rgba(0,0,0,0.15)' }}>
+          <div style={{ background: 'var(--mist-000)', padding: 28, width: 440, maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--mist-200)', clipPath: 'var(--chamfer)' }}>
             <h2 style={{ marginBottom: 20 }}>Edit Task #{editingTask.id}</h2>
 
             {[
@@ -1099,12 +1376,12 @@ export default function AdminDashboard() {
             </div>
 
             {(editForm.started_at && editForm.stopped_at) && (
-              <p style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>
+              <p style={{ fontSize: 12, color: 'var(--ink-400)', marginBottom: 12 }}>
                 Active time = (end − start) − pause time.
               </p>
             )}
 
-            <div style={{ borderTop: '1px solid #eee', margin: '8px 0 14px', paddingTop: 12 }}>
+            <div style={{ borderTop: '1px solid var(--mist-200)', margin: '8px 0 14px', paddingTop: 12 }}>
               <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>Review</div>
 
               <div className="form-group">
@@ -1164,7 +1441,7 @@ export default function AdminDashboard() {
               </div>
 
               {(editForm.review_started_at && editForm.review_ended_at) && (
-                <p style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>
+                <p style={{ fontSize: 12, color: 'var(--ink-400)', marginBottom: 12 }}>
                   Reviewer Time = (end − start) − pause time.
                 </p>
               )}
@@ -1188,15 +1465,16 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {editError && <p style={{ color: '#b00', fontSize: 13, marginBottom: 12 }}>{editError}</p>}
+            {editError && <p style={{ color: 'var(--signal-stop)', fontSize: 13, marginBottom: 12 }}>{editError}</p>}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center' }}>
-              <button onClick={handleEditSave} disabled={editLoading}>{editLoading ? 'Saving…' : 'Save'}</button>
+              <button className="btn-primary" onClick={handleEditSave} disabled={editLoading}>{editLoading ? 'Saving…' : 'Save'}</button>
               <button onClick={() => setEditingTask(null)}>Cancel</button>
               <button
+                className="btn-danger"
                 onClick={handleResetReview}
                 disabled={editLoading}
-                style={{ marginLeft: 'auto', color: '#c53030' }}
+                style={{ marginLeft: 'auto' }}
               >
                 Reset Review
               </button>
@@ -1204,6 +1482,7 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

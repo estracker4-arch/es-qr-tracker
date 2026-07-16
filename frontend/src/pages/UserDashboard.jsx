@@ -75,7 +75,7 @@ export default function UserDashboard() {
         case 'resume':   result = await api.resumeTask(selectedId);         break;
         case 'stop':     result = await api.stopTask(selectedId);           break;
         case 'unstop':   result = await api.unstopTask(selectedId);         break;
-        case 'complete': result = await api.completeTask(selectedId);       break;
+        case 'complete': result = await api.completeTask(selectedId, payload); break;
         case 'stuck':    result = await api.setStuckReason(selectedId, payload); break;
         case 'delete':
           await api.deleteTask(selectedId);
@@ -112,8 +112,16 @@ export default function UserDashboard() {
       />
 
       <main style={{ flex: 1, padding: 24, overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h1>Welcome, {user.name}</h1>
+        <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+          <div>
+            <h1>Welcome, {user.name}</h1>
+            <div style={{ fontSize: 12, color: 'var(--ink-400)', marginTop: 3 }}>
+              {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' })}
+              <span className="mono" style={{ marginLeft: 10, color: 'var(--ink-900)' }}>
+                {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {user.role === 'reviewer' && (
               <button onClick={() => nav('/reviewer')}>Switch to Reviewer</button>
@@ -123,20 +131,21 @@ export default function UserDashboard() {
         </div>
 
         {autoPauseMsg && (
-          <div style={{
+          <div className="recess" style={{
             padding: '8px 12px',
-            border: '1px solid #bbb',
-            background: '#f5f5f5',
             fontSize: 13,
             marginBottom: 20,
+            color: 'var(--ink-400)',
+            borderLeft: '2px solid var(--signal-warn)',
           }}>
             {autoPauseMsg}
           </div>
         )}
 
         {!selectedTask ? (
-          <div style={{ maxWidth: 400 }}>
-            <h2 style={{ marginBottom: 16 }}>Start New Task</h2>
+          <div className="panel fade-up" style={{ maxWidth: 420, '--d': '80ms' }}>
+            <div className="panel-title">Start new task</div>
+            <div className="panel-sub">The running task pauses automatically when a new one starts.</div>
 
             <div className="form-group">
               <label>User</label>
@@ -171,9 +180,10 @@ export default function UserDashboard() {
             </div>
 
             <button
+              className="btn-primary"
               onClick={handleStart}
               disabled={actionLoading || !form.product || !form.qr_no || !form.status_field}
-              style={{ marginTop: 4 }}
+              style={{ marginTop: 4, minWidth: 96 }}
             >
               {actionLoading ? 'Starting…' : 'Start'}
             </button>

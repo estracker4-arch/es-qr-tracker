@@ -357,8 +357,52 @@ router.post('/products', async (req, res) => {
 // DELETE /api/admin/products/:id
 router.delete('/products/:id', async (req, res) => {
   try {
+    // qc_items cascade-delete via FK ON DELETE CASCADE.
     const { rowCount } = await pool.query('DELETE FROM products WHERE id = $1', [req.params.id]);
     if (!rowCount) return res.status(404).json({ error: 'Product not found' });
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/admin/products/:id/qc-items — self-QC checklist for a product
+router.get('/products/:id/qc-items', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, label, sort_order FROM qc_items WHERE product_id = $1 ORDER BY sort_order, id',
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/admin/products/:id/qc-items — add a checklist item
+router.post('/products/:id/qc-items', async (req, res) => {
+  const { label } = req.body;
+  if (!label?.trim()) return res.status(400).json({ error: 'Label required' });
+  try {
+    const { rows: prod } = await pool.query('SELECT id FROM products WHERE id = $1', [req.params.id]);
+    if (!prod.length) return res.status(404).json({ error: 'Product not found' });
+    const { rows } = await pool.query(
+      `INSERT INTO qc_items (product_id, label, sort_order)
+       VALUES ($1, $2, COALESCE((SELECT MAX(sort_order) + 1 FROM qc_items WHERE product_id = $1), 0))
+       RETURNING id, label, sort_order`,
+      [req.params.id, label.trim()]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// DELETE /api/admin/qc-items/:id — remove a checklist item
+router.delete('/qc-items/:id', async (req, res) => {
+  try {
+    const { rowCount } = await pool.query('DELETE FROM qc_items WHERE id = $1', [req.params.id]);
+    if (!rowCount) return res.status(404).json({ error: 'Item not found' });
     res.json({ message: 'Deleted' });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

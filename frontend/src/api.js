@@ -35,7 +35,8 @@ export const api = {
   resumeTask:     (id)           => req('PATCH', `/tasks/${id}/resume`),
   stopTask:       (id)           => req('PATCH', `/tasks/${id}/stop`),
   unstopTask:     (id)           => req('PATCH', `/tasks/${id}/unstop`),
-  completeTask:   (id)           => req('PATCH', `/tasks/${id}/complete`),
+  getTaskQcItems: (id)           => req('GET',   `/tasks/${id}/qc-items`),
+  completeTask:   (id, data)     => req('PATCH', `/tasks/${id}/complete`, data || {}),
   setStuckReason: (id, reason)   => req('PATCH', `/tasks/${id}/stuck-reason`, { reason }),
   deleteTask:     (id)           => req('DELETE', `/tasks/${id}`),
 
@@ -52,6 +53,9 @@ export const api = {
     getProducts:   ()        => req('GET',    '/admin/products'),
     addProduct:    (name)    => req('POST',   '/admin/products', { name }),
     deleteProduct: (id)      => req('DELETE', `/admin/products/${id}`),
+    getQcItems:    (productId)        => req('GET',    `/admin/products/${productId}/qc-items`),
+    addQcItem:     (productId, label) => req('POST',   `/admin/products/${productId}/qc-items`, { label }),
+    deleteQcItem:  (id)               => req('DELETE', `/admin/qc-items/${id}`),
     getTasks:      (filters) => req('GET', `/admin/tasks?${new URLSearchParams(
       Object.fromEntries(Object.entries(filters).filter(([, v]) => v))
     )}`),
